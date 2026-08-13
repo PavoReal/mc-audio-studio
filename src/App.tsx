@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MobileGate } from "./components/MobileGate";
 import { StartPage } from "./components/StartPage";
 import { UpdatePrompt } from "./components/UpdatePrompt";
 import { Workspace } from "./components/Workspace";
@@ -19,7 +18,6 @@ import {
   streamResourcePack
 } from "./lib/pack";
 import { deleteProjectMetadata, listProjects, saveProject } from "./lib/storage";
-import { useMediaQuery } from "./hooks/useMediaQuery";
 import type {
   AudioTake,
   CatalogIndex,
@@ -74,11 +72,10 @@ export default function App() {
   const [busy, setBusy] = useState("Loading local studio…");
   const [error, setError] = useState("");
   const [exportProgress, setExportProgress] = useState(0);
-  const isMobile = useMediaQuery("(pointer: coarse) and (max-width: 1023px)");
   const bootstrapped = useRef(false);
 
   useEffect(() => {
-    if (isMobile || bootstrapped.current) return;
+    if (bootstrapped.current) return;
     bootstrapped.current = true;
     void Promise.all([loadCatalogIndex(), listProjects(), storageEstimate(true)])
       .then(async ([nextIndex, nextProjects, estimate]) => {
@@ -92,7 +89,7 @@ export default function App() {
       })
       .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)))
       .finally(() => setBusy(""));
-  }, [isMobile]);
+  }, []);
 
   useEffect(() => {
     if (!project) return;
@@ -251,7 +248,7 @@ export default function App() {
     if (!shared) await removePrivateFile(take.opfsPath);
   }
 
-  async function exportPack() {
+  async function exportPack(mode: "download" | "share" = "download") {
     if (!project || !effectiveCatalog) return;
     const ready = Object.values(project.replacements).filter((replacement) => replacement.activeTakeId);
     if (!ready.length) { setError("Add at least one active replacement before exporting."); return; }
@@ -273,7 +270,20 @@ export default function App() {
         }
       };
       let warnings: string[];
-      if (window.showSaveFilePicker) {
+      if (mode === "share") {
+        const result = await buildResourcePack(project, exportOptions);
+        warnings = result.warnings;
+        const file = new File([result.blob], filename, { type: "application/zip" });
+        if (navigator.canShare?.({ files: [file] })) {
+          try {
+            await navigator.share({ files: [file], title: project.name, text: `Minecraft Java ${project.minecraftVersion} sound resource pack.` });
+          } catch (reason) {
+            if (!(reason instanceof DOMException && reason.name === "AbortError")) throw reason;
+          }
+        } else {
+          downloadBlob(result.blob, filename);
+        }
+      } else if (window.showSaveFilePicker) {
         const handle = await window.showSaveFilePicker({ suggestedName: filename, types: [{ description: "Minecraft resource pack", accept: { "application/zip": [".zip"] } }] });
         const writable = await handle.createWritable();
         warnings = (await streamResourcePack(project, exportOptions, writable)).warnings;
@@ -288,8 +298,6 @@ export default function App() {
   }
 
   async function flushProject() { if (project) await saveProject(project); }
-
-  if (isMobile) return <MobileGate />;
 
   return (
     <>
@@ -329,7 +337,8 @@ export default function App() {
             const replacement = current.replacements[selectedPath];
             return replacement ? { ...current, replacements: { ...current.replacements, [selectedPath]: { ...replacement, activeTakeId: null } } } : current;
           })}
-          onExport={() => void exportPack()}
+          onExport={() => void exportPack("download")}
+          onShare={typeof navigator.share === "function" ? () => void exportPack("share") : undefined}
         />
       )}
       {error && project && <div className="error-toast" role="alert"><span>{error}</span><button onClick={() => setError("")}>×</button></div>}

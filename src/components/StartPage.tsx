@@ -59,7 +59,7 @@ export function StartPage(props: Props) {
           </div>
           <p className="start-footnote">{formatBytes(props.storage.usage)} of {formatBytes(props.storage.quota)} browser storage used · everything stays on this computer</p>
         </div>
-        <footer className="landing-footer"><span>{APP_NOTICE}</span><span>Chrome &amp; Edge desktop · HTTPS required for recording</span></footer>
+        <footer className="landing-footer"><span>{APP_NOTICE}</span><span>Chrome &amp; Edge · HTTPS required for recording</span></footer>
       </section>
     </main>
   );
