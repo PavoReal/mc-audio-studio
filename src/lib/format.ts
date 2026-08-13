@@ -28,6 +28,25 @@ export function slugify(value: string): string {
     .slice(0, 64) || "sound-pack";
 }
 
+export function formatRelativeTime(iso: string, now: Date = new Date()): string {
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return "";
+  const formatter = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+  const elapsed = (then - now.getTime()) / 1000;
+  const steps: Array<[Intl.RelativeTimeFormatUnit, number]> = [
+    ["year", 60 * 60 * 24 * 365],
+    ["month", 60 * 60 * 24 * 30],
+    ["week", 60 * 60 * 24 * 7],
+    ["day", 60 * 60 * 24],
+    ["hour", 60 * 60],
+    ["minute", 60]
+  ];
+  for (const [unit, seconds] of steps) {
+    if (Math.abs(elapsed) >= seconds) return formatter.format(Math.trunc(elapsed / seconds), unit);
+  }
+  return "just now";
+}
+
 export function relativeSoundPath(targetPath: string): string {
   return targetPath.startsWith("minecraft/sounds/")
     ? targetPath.slice("minecraft/sounds/".length)
