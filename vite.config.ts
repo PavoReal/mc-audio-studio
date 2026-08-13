@@ -43,7 +43,10 @@ export default defineConfig({
             urlPattern: ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith("/vanilla-assets/"),
             handler: "CacheFirst",
             options: {
-              cacheName: "vanilla-sound-previews",
+              // Distinct from vanilla-sound-previews: clients that visited while
+              // production served the SPA fallback for these URLs may hold
+              // poisoned HTML entries under the old cache name.
+              cacheName: "vanilla-asset-bytes",
               expiration: { maxEntries: 600, maxAgeSeconds: 60 * 60 * 24 * 30 },
               cacheableResponse: { statuses: [200] }
             }
