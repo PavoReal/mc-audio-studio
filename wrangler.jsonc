@@ -1,0 +1,15 @@
+{
+  // Git-integrated Workers Builds deploys this config; the name must match the
+  // existing "mc-audio-studio" Worker so pushes update it in place.
+  "name": "mc-audio-studio",
+  "compatibility_date": "2026-08-12",
+  "main": "./worker/index.ts",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application",
+    "binding": "ASSETS",
+    // Only the vanilla-asset proxy invokes the Worker script; everything else
+    // is served straight from static assets.
+    "run_worker_first": ["/vanilla-assets/*"]
+  }
+}
