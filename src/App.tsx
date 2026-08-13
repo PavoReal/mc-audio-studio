@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { MobileGate } from "./components/MobileGate";
 import { StartPage } from "./components/StartPage";
 import { UpdatePrompt } from "./components/UpdatePrompt";
 import { Workspace } from "./components/Workspace";
@@ -18,6 +19,7 @@ import {
   streamResourcePack
 } from "./lib/pack";
 import { deleteProjectMetadata, listProjects, saveProject } from "./lib/storage";
+import { useMediaQuery } from "./hooks/useMediaQuery";
 import type {
   AudioTake,
   CatalogIndex,
@@ -72,8 +74,12 @@ export default function App() {
   const [busy, setBusy] = useState("Loading local studio…");
   const [error, setError] = useState("");
   const [exportProgress, setExportProgress] = useState(0);
+  const isMobile = useMediaQuery("(pointer: coarse) and (max-width: 1023px)");
+  const bootstrapped = useRef(false);
 
   useEffect(() => {
+    if (isMobile || bootstrapped.current) return;
+    bootstrapped.current = true;
     void Promise.all([loadCatalogIndex(), listProjects(), storageEstimate(true)])
       .then(async ([nextIndex, nextProjects, estimate]) => {
         setIndex(nextIndex);
@@ -86,7 +92,7 @@ export default function App() {
       })
       .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)))
       .finally(() => setBusy(""));
-  }, []);
+  }, [isMobile]);
 
   useEffect(() => {
     if (!project) return;
@@ -282,6 +288,8 @@ export default function App() {
   }
 
   async function flushProject() { if (project) await saveProject(project); }
+
+  if (isMobile) return <MobileGate />;
 
   return (
     <>

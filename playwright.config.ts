@@ -14,5 +14,8 @@ export default defineConfig({
     url: "http://127.0.0.1:4173",
     reuseExistingServer: true
   },
-  projects: [{ name: "chromium-desktop", use: { ...devices["Desktop Chrome"] } }]
+  projects: [
+    { name: "chromium-desktop", use: { ...devices["Desktop Chrome"] } },
+    { name: "mobile-chrome", testMatch: /mobile-gate/, use: { ...devices["Pixel 7"] } }
+  ]
 });

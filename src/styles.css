@@ -181,6 +181,29 @@ button:focus-visible, input:focus-visible, select:focus-visible, label.file-butt
 .orb-day { background:linear-gradient(180deg,#38cfff 45%,#0758b6 45%,#0758b6 72%,#87a631 72%); }
 .landing-footer { position:absolute; right:54px; bottom:22px; left:54px; display:flex; justify-content:space-between; color:rgba(255,255,255,.5); font-size:9px; }
 
+/* Mobile gate: coarse-pointer devices below the app's 1024px floor see one static page. */
+html.mobile-gated body { min-width: 0; }
+.mobile-gate .landing-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 28px);
+  min-height: calc(100dvh - 28px);
+  padding: clamp(16px, 5vw, 32px);
+  padding-bottom: max(clamp(16px, 5vw, 32px), env(safe-area-inset-bottom));
+}
+.mobile-gate-panel {
+  width: 100%;
+  max-width: 420px;
+  margin: auto;
+  padding: 28px 22px;
+  border-radius: 6px;
+  text-align: center;
+}
+.mobile-gate-panel h1 { margin: 0 0 12px; font-size: 20px; text-shadow: 2px 2px 0 rgba(0,0,0,.45); }
+.mobile-gate-panel h1 em { color: var(--lime); font-style: normal; }
+.mobile-gate-panel p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.mobile-gate .landing-footer { position: static; flex-direction: column; align-items: center; gap: 4px; margin-top: 16px; text-align: center; }
+
 /* Start page (save selector + create screen) */
 .start-page { display: flex; flex-direction: column; }
 .start-column {
