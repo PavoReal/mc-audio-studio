@@ -55,6 +55,84 @@ export function categoryFor(variant: CatalogVariant): string {
   return variant.events[0].split(".", 1)[0] || "unmapped";
 }
 
+export const ESSENTIALS_CATEGORY = "essentials";
+
+// Hand-picked events that resource-pack makers most often override:
+// UI feedback, player feedback, iconic mobs, containers, combat, and weather.
+const ESSENTIAL_EVENTS = new Set([
+  "ui.button.click",
+  "ui.toast.challenge_complete",
+  "entity.player.levelup",
+  "entity.experience_orb.pickup",
+  "entity.item.pickup",
+  "entity.player.hurt",
+  "entity.player.death",
+  "entity.player.big_fall",
+  "entity.player.attack.crit",
+  "entity.player.attack.strong",
+  "entity.player.attack.sweep",
+  "entity.player.burp",
+  "entity.generic.eat",
+  "entity.generic.drink",
+  "entity.generic.explode",
+  "entity.generic.hurt",
+  "entity.generic.death",
+  "entity.tnt.primed",
+  "entity.creeper.primed",
+  "entity.creeper.hurt",
+  "entity.creeper.death",
+  "entity.zombie.ambient",
+  "entity.zombie.hurt",
+  "entity.zombie.death",
+  "entity.skeleton.ambient",
+  "entity.skeleton.hurt",
+  "entity.skeleton.death",
+  "entity.skeleton.shoot",
+  "entity.enderman.ambient",
+  "entity.enderman.scream",
+  "entity.enderman.stare",
+  "entity.enderman.teleport",
+  "entity.ghast.scream",
+  "entity.villager.ambient",
+  "entity.villager.trade",
+  "entity.villager.hurt",
+  "entity.villager.no",
+  "entity.villager.yes",
+  "entity.pig.ambient",
+  "entity.cow.ambient",
+  "entity.chicken.ambient",
+  "entity.sheep.ambient",
+  "entity.cat.ambient",
+  "entity.wolf.ambient",
+  "entity.arrow.shoot",
+  "entity.arrow.hit_player",
+  "entity.ender_pearl.throw",
+  "block.chest.open",
+  "block.chest.close",
+  "block.ender_chest.open",
+  "block.ender_chest.close",
+  "block.wooden_door.open",
+  "block.wooden_door.close",
+  "block.anvil.use",
+  "block.anvil.land",
+  "block.portal.travel",
+  "block.portal.trigger",
+  "weather.rain",
+  "entity.lightning_bolt.thunder",
+  "item.totem.use",
+  "entity.wither.spawn",
+  "entity.wither.death",
+  "entity.ender_dragon.growl",
+  "entity.ender_dragon.death",
+  "entity.firework_rocket.launch",
+  "entity.firework_rocket.blast",
+  "entity.firework_rocket.twinkle"
+]);
+
+export function isEssentialVariant(variant: CatalogVariant): boolean {
+  return variant.events.some((event) => ESSENTIAL_EVENTS.has(event));
+}
+
 export function searchCatalog(
   catalog: SoundCatalog,
   query: string,
@@ -62,7 +140,11 @@ export function searchCatalog(
 ): CatalogVariant[] {
   const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
   return Object.values(catalog.variants)
-    .filter((variant) => category === "all" || variant.events.some((event) => event.startsWith(`${category}.`)))
+    .filter((variant) => {
+      if (category === "all") return true;
+      if (category === ESSENTIALS_CATEGORY) return isEssentialVariant(variant);
+      return variant.events.some((event) => event.startsWith(`${category}.`));
+    })
     .filter((variant) => {
       const haystack = `${variant.path} ${variant.events.join(" ")}`.toLocaleLowerCase();
       return terms.every((term) => haystack.includes(term));
