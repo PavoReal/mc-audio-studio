@@ -98,13 +98,42 @@ test("records a fake mono microphone take and autosaves it", async ({ page, cont
   await expect(page.getByText("Replacement ready")).toBeVisible();
   await expect(page.getByRole("button", { name: /microphone take/i })).toBeVisible();
   await expect(page.getByText(/project autosaved in this browser/i)).toBeVisible();
-  await expect(page.locator(".waveform-peaks")).toHaveCount(1);
-  await expect(page.locator(".waveform-core")).toHaveCount(1);
-  await expect(page.locator(".waveform-zero")).toHaveCount(1);
-  await expect(page.locator(".waveform-grid > i")).toHaveCount(0);
-  const path = await page.locator(".waveform-peaks").getAttribute("d");
-  expect(path).toMatch(/^M.+Z$/);
-  expect(path!.length).toBeGreaterThan(1_000);
-  await expect(page.locator(".waveform-scale")).toContainText("+1.0");
-  await expect(page.locator(".waveform-scale")).toContainText("−1.0");
+  await expect(page.locator(".wave-canvas")).toHaveCount(1);
+  await expect(page.locator(".wave-trim-handle")).toHaveCount(2);
+  // The canvas should have painted waveform pixels distinct from the flat track background.
+  const painted = await page.locator(".wave-canvas").evaluate((element) => {
+    const canvas = element as HTMLCanvasElement;
+    const context = canvas.getContext("2d");
+    if (!context || !canvas.width) return 0;
+    const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    let hits = 0;
+    for (let index = 0; index < data.length; index += 4) {
+      if (data[index + 2]! > data[index]! + 30) hits += 1; // blue-dominant waveform pixels
+    }
+    return hits;
+  });
+  expect(painted).toBeGreaterThan(100);
+  await expect(page.locator(".amp-ruler")).toContainText("1.0");
+  await expect(page.locator(".amp-ruler")).toContainText("-1.0");
+  await expect(page.locator(".time-ruler canvas")).toHaveCount(1);
+});
+
+test("drag on the waveform sets the trim selection", async ({ page, context }) => {
+  await context.grantPermissions(["microphone"]);
+  await page.goto("/");
+  await page.getByRole("button", { name: /create new pack/i }).click();
+  await page.getByRole("button", { name: "Record" }).click();
+  await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
+  await page.waitForTimeout(350);
+  await page.getByRole("button", { name: "Stop" }).click();
+  await expect(page.getByText("Replacement ready")).toBeVisible();
+  const track = page.locator(".wave-track");
+  const box = await track.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.move(box!.x + box!.width * 0.25, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width * 0.75, box!.y + box!.height / 2, { steps: 8 });
+  await page.mouse.up();
+  const times = page.locator(".waveform-times span");
+  await expect(times.first()).not.toHaveText("0:00.0");
 });

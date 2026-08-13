@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CircleStop, Copy, FileAudio, Mic2, Pause, Play, RotateCcw, Upload, Volume2, X } from "lucide-react";
 import type { AudioTake, CatalogVariant, EditRecipe, SoundReplacement } from "../types";
-import type { WaveformPoint } from "../lib/audio";
 import { formatDuration, relativeSoundPath } from "../lib/format";
-import { MicrophoneRecorder, previewEditedTake, previewRemote, stopPreview } from "../lib/audio";
+import { MicrophoneRecorder, previewEditedTake, previewRemote, stopPreview, type PreviewHandle } from "../lib/audio";
 import { vanillaSoundUrl } from "../lib/catalog";
 import { useWaveform } from "../hooks/useWaveform";
+import { useVanillaWaveform } from "../hooks/useVanillaWaveform";
+import { usePlayhead } from "../hooks/usePlayhead";
+import { WaveformCanvas } from "./WaveformCanvas";
+import { AmplitudeRuler, TimeRuler } from "./WaveformRulers";
 
 interface Props {
   variant: CatalogVariant;
@@ -18,30 +21,16 @@ interface Props {
   onApplyEvent: () => void;
 }
 
-const WAVEFORM_WIDTH = 1200;
-const LANE_HEIGHT = 100;
-
-function envelopePath(points: WaveformPoint[], lane: number, core = false): string {
-  if (!points.length) return "";
-  const center = lane * LANE_HEIGHT + LANE_HEIGHT / 2;
-  const amplitude = LANE_HEIGHT * 0.43;
-  const x = (index: number) => points.length === 1 ? 0 : index / (points.length - 1) * WAVEFORM_WIDTH;
-  const upper = points.map((point, index) => {
-    const value = core ? Math.min(point.max, point.rms) : point.max;
-    return `${x(index).toFixed(2)},${(center - value * amplitude).toFixed(2)}`;
-  });
-  const lower = points.map((point, index) => {
-    const value = core ? Math.max(point.min, -point.rms) : point.min;
-    return `${x(index).toFixed(2)},${(center - value * amplitude).toFixed(2)}`;
-  }).reverse();
-  return `M${upper.join(" L")} L${lower.join(" L")} Z`;
-}
+const round3 = (value: number) => Math.round(value * 1000) / 1000;
 
 export function WaveformEditor(props: Props) {
   const activeTake = props.replacement?.takes.find((take) => take.id === props.replacement?.activeTakeId) ?? null;
   const recipe = props.replacement?.edit ?? { trimStart: 0, trimEnd: null, gainDb: 0 };
-  const { envelope, loading } = useWaveform(activeTake);
+  const [binWidth, setBinWidth] = useState(0);
+  const { envelope: takeEnvelope, loading: takeLoading } = useWaveform(activeTake, binWidth || 640);
+  const vanilla = useVanillaWaveform(activeTake ? null : props.variant, binWidth || 640);
   const [playing, setPlaying] = useState<"vanilla" | "custom" | null>(null);
+  const [handle, setHandle] = useState<PreviewHandle | null>(null);
   const [recording, setRecording] = useState(false);
   const [recordTime, setRecordTime] = useState(0);
   const [recordPeak, setRecordPeak] = useState(0);
@@ -50,8 +39,13 @@ export function WaveformEditor(props: Props) {
   const [microphoneId, setMicrophoneId] = useState("");
   const recorder = useRef<MicrophoneRecorder | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  const duration = activeTake?.duration ?? props.variant.duration ?? 1;
+  const playheadTime = usePlayhead(handle);
+
+  const envelope = activeTake ? takeEnvelope : vanilla.envelope;
+  const loading = activeTake ? takeLoading : vanilla.loading;
+  const duration = activeTake?.duration ?? vanilla.duration ?? props.variant.duration ?? 1;
   const trimEnd = recipe.trimEnd ?? duration;
+  const laneCount = Math.max(1, envelope.length || Math.min(2, props.variant.channels || 1));
   const eventLabel = props.variant.events[0]?.replaceAll(".", " ") ?? "Unmapped sound";
 
   useEffect(() => () => stopPreview(), [props.variant.path]);
@@ -78,25 +72,34 @@ export function WaveformEditor(props: Props) {
     return () => window.clearInterval(timer);
   }, [recording]);
 
-  const renderedEnvelope = useMemo(() => envelope.slice(0, 2).map((points, lane) => ({
-    points,
-    peakPath: envelopePath(points, lane),
-    corePath: envelopePath(points, lane, true)
-  })), [envelope]);
-  const laneCount = Math.max(1, renderedEnvelope.length);
+  function watchPlayback(next: PreviewHandle, label: "vanilla" | "custom") {
+    setHandle(next);
+    void next.done.then(() => {
+      setPlaying((current) => current === label ? null : current);
+      setHandle((current) => current === next ? null : current);
+    });
+  }
 
   async function toggleVanilla() {
     if (!props.variant.objectHash) return;
     if (playing === "vanilla") { stopPreview(); setPlaying(null); return; }
     setPlaying("vanilla");
-    try { await previewRemote(vanillaSoundUrl(props.variant)); } finally { window.setTimeout(() => setPlaying(null), Math.max(1000, props.variant.duration * 1000)); }
+    try {
+      watchPlayback(await previewRemote(vanillaSoundUrl(props.variant)), "vanilla");
+    } catch {
+      setPlaying(null);
+    }
   }
 
   async function toggleCustom() {
     if (!activeTake) return;
     if (playing === "custom") { stopPreview(); setPlaying(null); return; }
     setPlaying("custom");
-    try { await previewEditedTake(activeTake, recipe); } finally { window.setTimeout(() => setPlaying(null), Math.max(1000, (trimEnd - recipe.trimStart) * 1000)); }
+    try {
+      watchPlayback(await previewEditedTake(activeTake, recipe), "custom");
+    } catch {
+      setPlaying(null);
+    }
   }
 
   async function toggleRecording() {
@@ -136,12 +139,13 @@ export function WaveformEditor(props: Props) {
     setRecordPeak(0);
   }
 
-  function setTrimStart(value: number) {
-    props.onRecipe({ ...recipe, trimStart: Math.min(value, trimEnd - 0.01) });
-  }
-  function setTrimEnd(value: number) {
-    props.onRecipe({ ...recipe, trimEnd: Math.max(value, recipe.trimStart + 0.01) });
-  }
+  const onSelectionChange = useCallback((start: number, end: number) => {
+    props.onRecipe({
+      ...recipe,
+      trimStart: round3(Math.max(0, start)),
+      trimEnd: end >= duration - 0.005 ? null : round3(end)
+    });
+  }, [recipe, duration, props.onRecipe]);
 
   return (
     <section className="editor-panel glass-panel">
@@ -157,58 +161,30 @@ export function WaveformEditor(props: Props) {
         </div>
       </div>
 
-      <div className={`waveform-card ${recording ? "is-recording" : ""}`}>
-        <div className="waveform-grid" aria-label={`${renderedEnvelope.length || 1}-channel amplitude waveform`}>
-          <div className="waveform-scale" aria-hidden="true">
-            {Array.from({ length: laneCount }, (_, lane) => <div key={lane}><span>+1.0</span><span>{laneCount > 1 ? `0 ${lane === 0 ? "L" : "R"}` : "0.0"}</span><span>−1.0</span></div>)}
-          </div>
-          <div className="waveform-canvas">
-            <svg className="waveform-svg" viewBox={`0 0 ${WAVEFORM_WIDTH} ${laneCount * LANE_HEIGHT}`} preserveAspectRatio="none" role="img">
-              <title>{activeTake ? `Waveform for ${activeTake.label}` : "No custom waveform loaded"}</title>
-              <defs>
-                <linearGradient id="waveform-peak" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0" stopColor="#94efff" /><stop offset="0.5" stopColor="#38bfff" /><stop offset="1" stopColor="#1679dc" />
-                </linearGradient>
-              </defs>
-              {Array.from({ length: laneCount }, (_, lane) => {
-                const center = lane * LANE_HEIGHT + LANE_HEIGHT / 2;
-                return <g key={lane}>
-                  <line className="waveform-guide" x1="0" x2={WAVEFORM_WIDTH} y1={center - LANE_HEIGHT * .215} y2={center - LANE_HEIGHT * .215} />
-                  <line className="waveform-zero" x1="0" x2={WAVEFORM_WIDTH} y1={center} y2={center} />
-                  <line className="waveform-guide" x1="0" x2={WAVEFORM_WIDTH} y1={center + LANE_HEIGHT * .215} y2={center + LANE_HEIGHT * .215} />
-                </g>;
-              })}
-              {renderedEnvelope.map((channel, lane) => <g key={`audio-${lane}`}>
-                <path className="waveform-peaks" d={channel.peakPath} />
-                <path className="waveform-core" d={channel.corePath} />
-                {channel.points.map((point, index) => point.clipped && <line
-                  className="waveform-clipping"
-                  key={index}
-                  x1={index / Math.max(1, channel.points.length - 1) * WAVEFORM_WIDTH}
-                  x2={index / Math.max(1, channel.points.length - 1) * WAVEFORM_WIDTH}
-                  y1={lane * LANE_HEIGHT + 5}
-                  y2={(lane + 1) * LANE_HEIGHT - 5}
-                />)}
-              </g>)}
-            </svg>
-            {activeTake && <>
-              <span className="trim-shade trim-left" style={{ width: `${recipe.trimStart / duration * 100}%` }} />
-              <span className="trim-shade trim-right" style={{ width: `${Math.max(0, (duration - trimEnd) / duration * 100)}%` }} />
-              <span className="trim-handle" style={{ left: `${recipe.trimStart / duration * 100}%` }} />
-              <span className="trim-handle" style={{ left: `${trimEnd / duration * 100}%` }} />
-            </>}
-          </div>
+      <div className="waveform-card">
+        <div className="waveform-grid" aria-label={`${laneCount}-channel amplitude waveform`}>
+          <div className="ruler-corner" />
+          <TimeRuler duration={duration} />
+          <AmplitudeRuler laneCount={laneCount} />
+          <WaveformCanvas
+            envelope={envelope}
+            duration={duration}
+            selection={activeTake ? { start: recipe.trimStart, end: trimEnd } : null}
+            onSelectionChange={onSelectionChange}
+            playheadTime={playheadTime}
+            interactive={Boolean(activeTake)}
+            onWidth={setBinWidth}
+          />
         </div>
-        <div className="waveform-times"><span>{formatDuration(recipe.trimStart)}</span><span>{loading ? "Reading waveform…" : formatDuration(duration)}</span><span>{formatDuration(trimEnd)}</span></div>
+        <div className="waveform-times">
+          <span>{formatDuration(recipe.trimStart)}</span>
+          <span>{loading ? "Reading waveform…" : vanilla.unavailable && !activeTake ? "Waveform unavailable — preview only" : formatDuration(duration)}</span>
+          <span>{formatDuration(trimEnd)}</span>
+        </div>
         {recording && <div className="recording-overlay"><span className="record-pulse" /><strong>{formatDuration(recordTime)}</strong><div className="meter"><i style={{ width: `${recordPeak * 100}%` }} /></div><span>Recording PCM · 48 kHz mono</span></div>}
       </div>
 
-      {activeTake ? (
-        <div className="trim-controls">
-          <label>In <input type="range" min={0} max={duration} step={0.01} value={recipe.trimStart} onChange={(event) => setTrimStart(Number(event.target.value))} /></label>
-          <label>Out <input type="range" min={0} max={duration} step={0.01} value={trimEnd} onChange={(event) => setTrimEnd(Number(event.target.value))} /></label>
-        </div>
-      ) : (
+      {!activeTake && (
         <div className="empty-waveform"><FileAudio size={18} /> Record or import a sound to unlock non-destructive trimming.</div>
       )}
 

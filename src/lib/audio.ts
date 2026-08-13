@@ -145,7 +145,14 @@ export function stopPreview(): void {
   }
 }
 
-export async function previewEditedTake(take: AudioTake, recipe: EditRecipe): Promise<void> {
+export interface PreviewHandle {
+  /** Current playback position in source-time seconds, or null once finished/stopped. */
+  getTime(): number | null;
+  stop(): void;
+  done: Promise<void>;
+}
+
+export async function previewEditedTake(take: AudioTake, recipe: EditRecipe): Promise<PreviewHandle> {
   stopPreview();
   const source = await decodeAudio(await readBlob(take.opfsPath));
   const context = audioContext();
@@ -158,14 +165,38 @@ export async function previewEditedTake(take: AudioTake, recipe: EditRecipe): Pr
   const end = Math.min(recipe.trimEnd ?? source.duration, source.duration);
   node.start(0, recipe.trimStart, Math.max(0, end - recipe.trimStart));
   previewSource = node;
-  node.onended = () => { if (previewSource === node) previewSource = null; };
+  const startedAt = context.currentTime;
+  const done = new Promise<void>((resolve) => {
+    node.onended = () => {
+      if (previewSource === node) previewSource = null;
+      resolve();
+    };
+  });
+  return {
+    getTime: () => previewSource === node
+      ? Math.min(end, recipe.trimStart + context.currentTime - startedAt)
+      : null,
+    stop: () => { try { node.stop(); } catch { /* already stopped */ } },
+    done
+  };
 }
 
-export async function previewRemote(url: string): Promise<void> {
+export async function previewRemote(url: string): Promise<PreviewHandle> {
   stopPreview();
   const audio = new Audio(url);
   remotePreview = audio;
+  const done = new Promise<void>((resolve) => {
+    const finish = () => resolve();
+    audio.addEventListener("ended", finish, { once: true });
+    audio.addEventListener("error", finish, { once: true });
+    audio.addEventListener("pause", finish, { once: true });
+  });
   await audio.play();
+  return {
+    getTime: () => remotePreview === audio && !audio.paused && !audio.ended ? audio.currentTime : null,
+    stop: () => audio.pause(),
+    done
+  };
 }
 
 function writeString(view: DataView, offset: number, value: string) {

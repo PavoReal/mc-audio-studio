@@ -2,6 +2,17 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
+// The Mojang asset CDN sends no CORS headers, so waveform decoding fetches go
+// through this same-origin path. Static production hosts need an equivalent
+// rewrite rule; without one the app falls back to "waveform unavailable".
+const vanillaAssetProxy = {
+  "/vanilla-assets": {
+    target: "https://resources.download.minecraft.net",
+    changeOrigin: true,
+    rewrite: (path: string) => path.replace(/^\/vanilla-assets/, "")
+  }
+};
+
 export default defineConfig({
   plugins: [
     react(),
@@ -45,6 +56,6 @@ export default defineConfig({
       }
     })
   ],
-  server: { port: 4173, strictPort: true },
-  preview: { port: 4173, strictPort: true }
+  server: { port: 4173, strictPort: true, proxy: vanillaAssetProxy },
+  preview: { port: 4173, strictPort: true, proxy: vanillaAssetProxy }
 });
