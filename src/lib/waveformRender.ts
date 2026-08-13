@@ -16,21 +16,21 @@ export interface WaveColors {
   rulerTick: string;
 }
 
-/** Audacity dark-theme palette; mirrored as --aud-* vars in styles.css. */
+/** Minecraft night-sky palette; mirrored as --wave-* vars in styles.css. */
 export const WAVE_COLORS: WaveColors = {
-  trackBg: "#212121",
-  selectionBg: "#404040",
-  peak: "#3f76b8",
-  rms: "#85b5e2",
-  peakSelected: "#5590cf",
-  rmsSelected: "#a8cdef",
-  zeroLine: "#838383",
-  guide: "#3a3a3a",
-  clip: "#ff2929",
-  laneBorder: "#000000",
-  rulerBg: "#2c2c2c",
-  rulerText: "#b8b8b8",
-  rulerTick: "#7a7a7a"
+  trackBg: "#050f20",
+  selectionBg: "#12304f",
+  peak: "#6fa32c",
+  rms: "#b9ff57",
+  peakSelected: "#8cc944",
+  rmsSelected: "#dcff9e",
+  zeroLine: "#7f92a8",
+  guide: "#152840",
+  clip: "#ff655e",
+  laneBorder: "#02060d",
+  rulerBg: "#08172d",
+  rulerText: "#a3bad2",
+  rulerTick: "#546c86"
 };
 
 const TICK_STEPS = [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10, 30, 60];
@@ -93,7 +93,7 @@ export function drawWaveform(ctx: CanvasRenderingContext2D, options: DrawWavefor
     // ±0.5 dotted guides
     ctx.strokeStyle = colors.guide;
     ctx.lineWidth = dpr;
-    ctx.setLineDash([2 * dpr, 3 * dpr]);
+    ctx.setLineDash([2 * dpr, 2 * dpr]);
     for (const sign of [-1, 1]) {
       const y = Math.round(center + sign * amplitude * 0.5) + 0.5;
       ctx.beginPath();
@@ -106,22 +106,28 @@ export function drawWaveform(ctx: CanvasRenderingContext2D, options: DrawWavefor
     const points = envelope[lane];
     if (points?.length) {
       const bins = points.length;
-      for (let x = 0; x < width; x += 1) {
-        const point = points[Math.min(bins - 1, Math.floor(x * bins / width))]!;
+      // Chunky pixel columns snapped to a block grid, matching the Minecraft look.
+      const block = Math.max(1, Math.round(2 * dpr));
+      const snap = (value: number) => Math.round(value / block) * block;
+      for (let x = 0; x < width; x += block) {
+        const point = points[Math.min(bins - 1, Math.floor((x + block / 2) * bins / width))]!;
         const inSelection = x >= selectionStartX && x < selectionEndX;
+        const columnWidth = Math.min(block, width - x);
         if (point.clipped) {
           ctx.fillStyle = colors.clip;
-          ctx.fillRect(x, laneTop, 1, laneHeight);
+          ctx.fillRect(x, laneTop, columnWidth, laneHeight);
           continue;
         }
-        const top = center - point.max * amplitude;
-        const bottom = center - point.min * amplitude;
+        const top = snap(center - point.max * amplitude);
+        const bottom = snap(center - point.min * amplitude);
         ctx.fillStyle = inSelection ? colors.peakSelected : colors.peak;
-        ctx.fillRect(x, top, 1, Math.max(dpr, bottom - top));
+        ctx.fillRect(x, top, columnWidth, Math.max(block, bottom - top));
         const rms = Math.min(point.rms, Math.max(point.max, -point.min));
         if (rms > 0) {
+          const rmsTop = snap(center - rms * amplitude);
+          const rmsBottom = snap(center + rms * amplitude);
           ctx.fillStyle = inSelection ? colors.rmsSelected : colors.rms;
-          ctx.fillRect(x, center - rms * amplitude, 1, Math.max(dpr, 2 * rms * amplitude));
+          ctx.fillRect(x, rmsTop, columnWidth, Math.max(block, rmsBottom - rmsTop));
         }
       }
     }
@@ -156,7 +162,7 @@ export function drawTimeRuler(ctx: CanvasRenderingContext2D, options: DrawTimeRu
   if (duration <= 0) return;
 
   const { major, minor } = niceTimeTicks(duration, width / dpr);
-  ctx.font = `${9 * dpr}px Inter, system-ui, sans-serif`;
+  ctx.font = `${8 * dpr}px Monocraft, "Courier New", monospace`;
   ctx.textBaseline = "top";
 
   for (let t = 0, index = 0; t <= duration + minor / 2; index += 1, t = index * minor) {
