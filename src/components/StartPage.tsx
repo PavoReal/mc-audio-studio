@@ -15,7 +15,7 @@ interface Props {
   busy: string;
   error: string;
   onVersion: (version: string) => void;
-  onCreate: (name: string, backdrop: StudioProject["backdrop"]) => void;
+  onCreate: (name: string) => void;
   onImport: (file: File) => void;
   onOpen: (project: StudioProject) => void;
   onDelete: (project: StudioProject) => void;
@@ -23,11 +23,9 @@ interface Props {
 
 export function StartPage(props: Props) {
   const [explicitView, setExplicitView] = useState<"selector" | "create" | null>(null);
-  const [previewBackdrop, setPreviewBackdrop] = useState<StudioProject["backdrop"]>("day");
   const view = props.projects.length > 0 ? explicitView ?? "selector" : "create";
-  const scene = view === "create" ? previewBackdrop : "day";
   return (
-    <main className={`landing sky-scene scene-${scene}`}>
+    <main className="landing sky-scene scene-day">
       <div className="ambient-lines" />
       <section className="landing-shell start-page">
         <header className="landing-nav">
@@ -52,7 +50,6 @@ export function StartPage(props: Props) {
               onVersion={props.onVersion}
               onCreate={props.onCreate}
               onImport={props.onImport}
-              onBackdropPreview={setPreviewBackdrop}
               onBack={props.projects.length > 0 ? () => setExplicitView("selector") : undefined}
             />
           )}

@@ -47,6 +47,8 @@ export function migrateProject(value: unknown): StudioProject {
     }
     throw new Error("This project uses an unsupported legacy schema.");
   }
+  // Retired "gold"/"dusk" backdrops fall back to the only remaining scene.
+  if (candidate.backdrop !== "day") candidate.backdrop = "day";
   return candidate as StudioProject;
 }
 

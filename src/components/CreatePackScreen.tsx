@@ -1,33 +1,21 @@
 import { useState } from "react";
 import { ArrowLeft, FilePlus2, Import } from "lucide-react";
-import type { CatalogIndexEntry, StudioProject } from "../types";
+import type { CatalogIndexEntry } from "../types";
 import { formatPackFormat } from "../lib/format";
-
-const BACKDROPS: Array<{ id: StudioProject["backdrop"]; label: string }> = [
-  { id: "day", label: "Day" },
-  { id: "gold", label: "Gold" },
-  { id: "dusk", label: "Dusk" }
-];
 
 interface Props {
   catalogs: CatalogIndexEntry[];
   selectedVersion: string;
   busy: string;
   onVersion: (version: string) => void;
-  onCreate: (name: string, backdrop: StudioProject["backdrop"]) => void;
+  onCreate: (name: string) => void;
   onImport: (file: File) => void;
-  onBackdropPreview: (backdrop: StudioProject["backdrop"]) => void;
   onBack?: () => void;
 }
 
 export function CreatePackScreen(props: Props) {
   const [name, setName] = useState("My Sound Pack");
-  const [backdrop, setBackdrop] = useState<StudioProject["backdrop"]>("day");
   const selectedCatalog = props.catalogs.find((entry) => entry.version === props.selectedVersion);
-  function chooseBackdrop(next: StudioProject["backdrop"]) {
-    setBackdrop(next);
-    props.onBackdropPreview(next);
-  }
   return (
     <>
       <h1 className="start-title">Create New <em>Sound Pack</em></h1>
@@ -40,7 +28,7 @@ export function CreatePackScreen(props: Props) {
             value={name}
             maxLength={80}
             onChange={(event) => setName(event.target.value)}
-            onKeyDown={(event) => { if (event.key === "Enter" && !props.busy) props.onCreate(name, backdrop); }}
+            onKeyDown={(event) => { if (event.key === "Enter" && !props.busy) props.onCreate(name); }}
           />
         </label>
         <div className="version-control">
@@ -50,16 +38,6 @@ export function CreatePackScreen(props: Props) {
           </select>
           {selectedCatalog && <span>{selectedCatalog.sounds.toLocaleString()} sound variants indexed</span>}
         </div>
-        <div>
-          <span className="field-label">Backdrop</span>
-          <div className="backdrop-picker" role="group" aria-label="Backdrop">
-            {BACKDROPS.map((option) => (
-              <button key={option.id} type="button" aria-pressed={backdrop === option.id} onClick={() => chooseBackdrop(option.id)}>
-                <span className={`project-orb orb-${option.id}`} /> {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
       <div className="start-actions">
         {props.onBack && (
@@ -67,7 +45,7 @@ export function CreatePackScreen(props: Props) {
             <ArrowLeft size={16} /> Back
           </button>
         )}
-        <button className="button button-lime button-large" onClick={() => props.onCreate(name, backdrop)} disabled={Boolean(props.busy)}>
+        <button className="button button-lime button-large" onClick={() => props.onCreate(name)} disabled={Boolean(props.busy)}>
           <FilePlus2 size={17} /> Create
         </button>
         <label className="button button-glass button-large file-button">

@@ -1,4 +1,4 @@
-import { ArrowLeft, Download, Palette, PanelRightOpen, Settings2 } from "lucide-react";
+import { ArrowLeft, Download, PanelRightOpen, Settings2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { catalogCategories, ESSENTIALS_CATEGORY } from "../lib/catalog";
 import type { AudioTake, CatalogVariant, EditRecipe, SoundCatalog, StorageEstimate, StudioProject } from "../types";
@@ -50,12 +50,6 @@ export function Workspace(props: Props) {
             <span>Java {props.project.minecraftVersion} · {editedCount} replacements</span>
           </div>
           <div className="workspace-header-actions">
-            <div className="theme-switcher">
-              <button title="Change sky world"><Palette size={16} /></button>
-              <select value={props.project.backdrop} aria-label="Background scene" onChange={(event) => props.onProject({ ...props.project, backdrop: event.target.value as StudioProject["backdrop"], updatedAt: new Date().toISOString() })}>
-                <option value="day">Day peak</option><option value="gold">Golden peak</option><option value="dusk">Dusk peak</option>
-              </select>
-            </div>
             <button className="icon-button desktop-inspector" onClick={() => setInspectorOpen(true)} title="Open inspector"><PanelRightOpen size={17} /></button>
             <button className="button button-amber" onClick={props.onExport} disabled={Boolean(props.busy)}><Download size={16} /> Export pack</button>
           </div>

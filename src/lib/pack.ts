@@ -235,8 +235,7 @@ export async function inspectResourcePack(
 
 export function newProject(
   name: string,
-  catalog: Pick<SoundCatalog, "version" | "packFormat">,
-  backdrop: StudioProject["backdrop"] = "day"
+  catalog: Pick<SoundCatalog, "version" | "packFormat">
 ): StudioProject {
   const now = new Date().toISOString();
   return {
@@ -254,7 +253,7 @@ export function newProject(
     packEntries: [],
     importDiagnostics: [],
     replacements: {},
-    backdrop
+    backdrop: "day"
   };
 }
 
@@ -264,7 +263,7 @@ export async function projectFromArchive(
   availableStorage: number
 ): Promise<StudioProject> {
   const inspected = await inspectResourcePack(archive, availableStorage);
-  const project = newProject(inspected.name, catalog, "gold");
+  const project = newProject(inspected.name, catalog);
   project.description = inspected.description;
   project.packFormat = inspected.packFormat ?? catalog.packFormat;
   project.packEntries = inspected.entries;

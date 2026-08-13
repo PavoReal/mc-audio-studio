@@ -114,9 +114,9 @@ export default function App() {
     return Object.keys(nextCatalog.variants)[0] ?? "";
   }
 
-  async function createProject(name: string, backdrop: StudioProject["backdrop"]) {
+  async function createProject(name: string) {
     if (!catalog) return;
-    const next = newProject(name, catalog, backdrop);
+    const next = newProject(name, catalog);
     await saveProject(next);
     setProjects((current) => [next, ...current]);
     setProject(next);
@@ -294,7 +294,7 @@ export default function App() {
           busy={busy}
           error={error}
           onVersion={(version) => void chooseVersion(version)}
-          onCreate={(name, backdrop) => void createProject(name, backdrop)}
+          onCreate={(name) => void createProject(name)}
           onImport={(file) => void importProject(file)}
           onOpen={(next) => void openProject(next)}
           onDelete={(next) => void deleteProject(next)}

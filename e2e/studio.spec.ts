@@ -41,23 +41,13 @@ test("lists saved packs in the save selector and deletes with confirmation", asy
   await expect(page.getByRole("button", { name: /back/i })).toHaveCount(0);
 });
 
-test("creates a pack with a custom name and backdrop", async ({ page }) => {
+test("creates a pack with a custom name", async ({ page }) => {
   await page.goto("/");
   await page.getByLabel(/pack name/i).fill("Cave Noises");
-  await page.getByRole("button", { name: /dusk/i }).click();
-  await expect(page.locator("main.landing")).toHaveClass(/scene-dusk/);
   await page.getByRole("button", { name: /^create$/i }).click();
   const scene = page.locator("main.workspace");
-  await expect(scene).toHaveClass(/scene-dusk/);
-  await expect(page.locator(".pack-title input")).toHaveValue("Cave Noises");
-});
-
-test("switches between mansion-peak backgrounds", async ({ page }) => {
-  await createPack(page);
-  const scene = page.locator("main.workspace");
   await expect(scene).toHaveClass(/scene-day/);
-  await page.getByLabel("Background scene").selectOption("dusk");
-  await expect(scene).toHaveClass(/scene-dusk/);
+  await expect(page.locator(".pack-title input")).toHaveValue("Cave Noises");
 });
 
 test("keeps the category filters readable instead of flex-shrinking them", async ({ page }) => {

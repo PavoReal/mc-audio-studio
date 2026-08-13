@@ -68,7 +68,7 @@ export interface StudioProject {
   packEntries: PackEntry[];
   importDiagnostics: ImportDiagnostic[];
   replacements: Record<string, SoundReplacement>;
-  backdrop: "day" | "gold" | "dusk";
+  backdrop: "day";
 }
 
 export interface CatalogSoundMetadata {
