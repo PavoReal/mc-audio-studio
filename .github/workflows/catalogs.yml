@@ -1,0 +1,30 @@
+name: Refresh Minecraft catalogs
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "20 8 * * 2"
+
+permissions:
+  contents: write
+
+jobs:
+  catalogs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run catalog:generate
+      - run: npm run catalog:validate
+      - run: npm test
+      - name: Commit refreshed catalogs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/catalogs
+          git diff --cached --quiet || git commit -m "chore: refresh Minecraft sound catalogs"
+          git push

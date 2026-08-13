@@ -1,0 +1,25 @@
+import { useEffect, useState } from "react";
+import type { AudioTake } from "../types";
+import { decodeAudio, waveform, type WaveformEnvelope } from "../lib/audio";
+import { readBlob } from "../lib/opfs";
+
+export function useWaveform(take: AudioTake | null, bins = 640) {
+  const [envelope, setEnvelope] = useState<WaveformEnvelope>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    if (!take) {
+      setEnvelope([]);
+      return;
+    }
+    setLoading(true);
+    void readBlob(take.opfsPath)
+      .then(decodeAudio)
+      .then((buffer) => { if (active) setEnvelope(waveform(buffer, bins)); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [take?.id, bins]);
+
+  return { envelope, loading };
+}

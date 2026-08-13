@@ -1,0 +1,33 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+vitest.config.js
+vitest.config.d.ts
+npm-debug.log*
+
+# Local settings and secrets
+.env
+.env.*
+!.env.example
+.mc-sound-studio/
+.cache/
+
+# Legacy local project data
+soundpack.json
+audio_sources/
+
+# Python leftovers
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Editor and operating-system files
+.DS_Store
