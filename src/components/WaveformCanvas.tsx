@@ -16,7 +16,8 @@ interface Props {
   onWidth?: (deviceWidth: number) => void;
 }
 
-const HANDLE_GRAB_PX = 6;
+const HANDLE_GRAB_PX = 12;
+const HANDLE_GRAB_TOUCH_PX = 22;
 const MIN_SPAN = 0.01;
 
 type DragMode = "start" | "end" | "new";
@@ -94,9 +95,10 @@ export function WaveformCanvas(props: Props) {
     const time = timeAt(event.clientX);
     let mode: DragMode = "new";
     if (props.selection) {
+      const grabPx = event.pointerType === "touch" ? HANDLE_GRAB_TOUCH_PX : HANDLE_GRAB_PX;
       const pxPerSecond = rect.width / duration;
-      const nearStart = Math.abs(time - props.selection.start) * pxPerSecond <= HANDLE_GRAB_PX;
-      const nearEnd = Math.abs(time - props.selection.end) * pxPerSecond <= HANDLE_GRAB_PX;
+      const nearStart = Math.abs(time - props.selection.start) * pxPerSecond <= grabPx;
+      const nearEnd = Math.abs(time - props.selection.end) * pxPerSecond <= grabPx;
       if (nearStart && nearEnd) mode = time < (props.selection.start + props.selection.end) / 2 ? "start" : "end";
       else if (nearStart) mode = "start";
       else if (nearEnd) mode = "end";
@@ -192,9 +194,10 @@ export function WaveformCanvas(props: Props) {
         const value = props.selection![edge];
         return <span
           key={edge}
-          className="wave-trim-handle"
+          className={`wave-trim-handle ${edge}`}
           role="slider"
           tabIndex={0}
+          title={edge === "start" ? "Drag to set the trim start" : "Drag to set the trim end"}
           aria-label={edge === "start" ? "Trim start" : "Trim end"}
           aria-valuemin={0}
           aria-valuemax={duration}
