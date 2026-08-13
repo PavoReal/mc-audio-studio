@@ -54,7 +54,8 @@ h1, h2, h3, .button, .transport, .record-button, .brand-mark, .eyebrow, .privacy
 
 * { box-sizing: border-box; }
 html, body, #root { min-height: 100%; margin: 0; }
-body { min-width: 1024px; min-height: 100vh; overflow: hidden; }
+body { min-height: 100vh; }
+@media (min-width: 1024px) { body { min-width: 1024px; overflow: hidden; } }
 button, input, select, output { font: inherit; }
 button, select { color: inherit; }
 button { border: 0; }
@@ -181,29 +182,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, label.file-butt
 .orb-day { background:linear-gradient(180deg,#4cc2ec 45%,#1a7ab3 45%,#1a7ab3 72%,#8fb43e 72%); }
 .landing-footer { position:absolute; right:54px; bottom:22px; left:54px; display:flex; justify-content:space-between; color:rgba(255,255,255,.5); font-size:9px; }
 
-/* Mobile gate: coarse-pointer devices below the app's 1024px floor see one static page. */
-html.mobile-gated body { min-width: 0; }
-.mobile-gate .landing-shell {
-  display: flex;
-  flex-direction: column;
-  min-height: calc(100vh - 28px);
-  min-height: calc(100dvh - 28px);
-  padding: clamp(16px, 5vw, 32px);
-  padding-bottom: max(clamp(16px, 5vw, 32px), env(safe-area-inset-bottom));
-}
-.mobile-gate-panel {
-  width: 100%;
-  max-width: 420px;
-  margin: auto;
-  padding: 28px 22px;
-  border-radius: 6px;
-  text-align: center;
-}
-.mobile-gate-panel h1 { margin: 0 0 12px; font-size: 20px; text-shadow: 2px 2px 0 rgba(0,0,0,.45); }
-.mobile-gate-panel h1 em { color: var(--lime); font-style: normal; }
-.mobile-gate-panel p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
-.mobile-gate .landing-footer { position: static; flex-direction: column; align-items: center; gap: 4px; margin-top: 16px; text-align: center; }
-
 /* Start page (save selector + create screen) */
 .start-page { display: flex; flex-direction: column; }
 .start-column {
@@ -281,6 +259,10 @@ html.mobile-gated body { min-width: 0; }
 .pack-title input { width:280px; padding:0; border:0; color:white; outline:0; background:transparent; font-size:13px; }
 .pack-title span { margin-top:3px; color:var(--muted); font-size:10px; }
 .workspace-header-actions { display:flex; align-items:center; gap:8px; margin-left:auto; }
+.export-split { display:flex; }
+.export-split .button { gap:7px; }
+.export-split .button:first-child:not(:last-child) { border-top-right-radius:0; border-bottom-right-radius:0; }
+.export-split .export-share { padding:0 12px; border-top-left-radius:0; border-bottom-left-radius:0; border-left:1px solid rgba(120,79,26,.55); }
 .workspace-grid { display:grid; grid-template-columns:minmax(270px, 310px) minmax(470px, 1fr) minmax(260px, 295px); gap:10px; height:calc(100vh - 113px); padding:10px; }
 .workspace-grid > .glass-panel { min-width:0; border-radius:6px; overflow:hidden; }
 .global-progress { position:absolute; z-index:20; top:66px; right:0; left:0; height:24px; background:rgba(8,34,46,.9); }
@@ -451,6 +433,79 @@ input[type="range"] { height:3px; accent-color:var(--lime); }
   .start-column { margin-top: 12px; }
   .workspace-grid { height:calc(100vh - 111px); }
   .waveform-card { height:270px; }
+}
+
+/* Mobile studio: single-column layout with a bottom tab bar, tuned for recording and exporting. */
+@media (max-width: 1023px) {
+  .landing { padding: 8px; }
+  .landing-shell { min-height: calc(100vh - 16px); min-height: calc(100dvh - 16px); padding: 18px 16px 20px; }
+  .landing-footer { position: static; flex-direction: column; align-items: center; gap: 4px; margin-top: 20px; text-align: center; }
+  .start-column { width: 100%; margin: 20px auto 24px; }
+  .start-title { font-size: 21px; }
+  .start-actions { flex-direction: column; }
+  .start-actions .button { min-width: 0; }
+  .save-list { max-height: 46vh; }
+
+  .workspace { padding: 0; }
+  .workspace-shell { min-height: 100vh; min-height: 100dvh; overflow: visible; border: 0; border-radius: 0; box-shadow: none; }
+  .workspace-header { position: sticky; top: 0; z-index: 30; height: auto; min-height: 58px; padding: 8px 10px; padding-top: max(8px, env(safe-area-inset-top)); }
+  .pack-title input { width: 100%; max-width: 160px; }
+  .desktop-inspector { display: none !important; }
+  .export-split .button { min-height: 42px; }
+  .export-split .button-label { display: none; }
+  .global-progress { position: sticky; top: 58px; }
+  .workspace-grid { display: block; height: auto; padding: 10px 10px calc(84px + env(safe-area-inset-bottom)); }
+  .workspace-grid > .glass-panel { border-radius: 6px; }
+  .library-panel { min-height: calc(100vh - 180px); min-height: calc(100dvh - 180px); }
+  .sound-list { max-height: none; }
+  .sound-row { padding: 12px 8px; }
+
+  .editor-panel { padding: 14px; }
+  .editor-heading { flex-direction: column; gap: 8px; min-height: 0; }
+  .editor-heading h2 { max-width: none; white-space: normal; font-size: 16px; }
+  .editor-heading code { max-width: none; }
+  .waveform-card { height: clamp(190px, 30vh, 260px); }
+  .transport-row { flex-wrap: wrap; gap: 8px; }
+  .transport-divider { display: none; }
+  .transport { flex: 1 1 40%; min-height: 46px; }
+  .record-button { order: -1; flex: 1 1 100%; min-height: 54px; font-size: 12px; }
+  .edit-controls { flex-direction: column; align-items: stretch; gap: 12px; }
+  .gain-control { grid-template-columns: 65px minmax(0, 1fr) 62px; }
+  .editor-actions .button { flex: 1; min-height: 42px; }
+
+  .inspector-panel { position: static; width: auto; transform: none; transition: none; }
+  .inspector-close { display: none !important; }
+  .drawer-scrim { display: none !important; }
+
+  .mobile-tabbar {
+    position: fixed;
+    z-index: 60;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: flex;
+    gap: 4px;
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+    border-top: 1px solid rgba(255,255,255,.14);
+    background: rgba(5,24,34,.94);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  .mobile-tabbar button {
+    display: grid;
+    flex: 1;
+    justify-items: center;
+    gap: 4px;
+    padding: 7px 4px;
+    border-radius: 6px;
+    color: rgba(255,255,255,.62);
+    background: transparent;
+    font-family: var(--font-display);
+    font-size: 9px;
+  }
+  .mobile-tabbar button.active { color: var(--lime-ink); background: var(--lime); }
+
+  .error-toast, .update-toast { right: 12px; left: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); max-width: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

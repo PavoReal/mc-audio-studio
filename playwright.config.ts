@@ -7,7 +7,10 @@ export default defineConfig({
     baseURL: "http://127.0.0.1:4173",
     trace: "on-first-retry",
     video: "retain-on-failure",
-    launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] }
+    launchOptions: {
+      executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined,
+      args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"]
+    }
   },
   webServer: {
     command: "npm run dev -- --host 127.0.0.1",
@@ -16,6 +19,6 @@ export default defineConfig({
   },
   projects: [
     { name: "chromium-desktop", use: { ...devices["Desktop Chrome"] } },
-    { name: "mobile-chrome", testMatch: /mobile-gate/, use: { ...devices["Pixel 7"] } }
+    { name: "mobile-chrome", testMatch: /mobile-studio/, use: { ...devices["Pixel 7"] } }
   ]
 });
