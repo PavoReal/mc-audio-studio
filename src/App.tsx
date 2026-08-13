@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { Landing } from "./components/Landing";
+import { StartPage } from "./components/StartPage";
 import { UpdatePrompt } from "./components/UpdatePrompt";
 import { Workspace } from "./components/Workspace";
 import { DEFAULT_RECIPE } from "./constants";
 import { encodeVorbis, renderTake, saveTake, stopPreview } from "./lib/audio";
 import { loadCatalog, loadCatalogIndex } from "./lib/catalog";
 import { formatBytes } from "./lib/format";
-import { removePrivateFile, storageEstimate } from "./lib/opfs";
+import { removePrivateDirectory, removePrivateFile, storageEstimate } from "./lib/opfs";
 import {
   buildResourcePack,
   type ExportOptions,
@@ -17,7 +17,7 @@ import {
   replacementFor,
   streamResourcePack
 } from "./lib/pack";
-import { listProjects, saveProject } from "./lib/storage";
+import { deleteProjectMetadata, listProjects, saveProject } from "./lib/storage";
 import type {
   AudioTake,
   CatalogIndex,
@@ -114,12 +114,26 @@ export default function App() {
     return Object.keys(nextCatalog.variants)[0] ?? "";
   }
 
-  async function createProject() {
+  async function createProject(name: string, backdrop: StudioProject["backdrop"]) {
     if (!catalog) return;
-    const next = newProject("My Sound Pack", catalog, "day");
+    const next = newProject(name, catalog, backdrop);
     await saveProject(next);
+    setProjects((current) => [next, ...current]);
     setProject(next);
     setSelectedPath(firstPath(catalog));
+  }
+
+  async function deleteProject(target: StudioProject) {
+    setBusy(`Deleting ${target.name}…`);
+    setError("");
+    try {
+      await deleteProjectMetadata(target.id);
+      await removePrivateDirectory(`projects/${target.id}`).catch(() => undefined);
+      setProjects((current) => current.filter((item) => item.id !== target.id));
+      setStorage(await storageEstimate());
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally { setBusy(""); }
   }
 
   async function importProject(file: File) {
@@ -130,6 +144,7 @@ export default function App() {
       const available = Math.max(0, storage.quota - storage.usage);
       const next = await projectFromArchive(file, catalog, available || Number.POSITIVE_INFINITY);
       await saveProject(next);
+      setProjects((current) => [next, ...current]);
       setProject(next);
       const merged = mergeImportedSounds(catalog, next);
       setSelectedPath(firstPath(merged));
@@ -271,7 +286,7 @@ export default function App() {
   return (
     <>
       {!project || !effectiveCatalog ? (
-        <Landing
+        <StartPage
           projects={projects}
           catalogs={index?.catalogs ?? []}
           selectedVersion={selectedVersion}
@@ -279,9 +294,10 @@ export default function App() {
           busy={busy}
           error={error}
           onVersion={(version) => void chooseVersion(version)}
-          onCreate={() => void createProject()}
+          onCreate={(name, backdrop) => void createProject(name, backdrop)}
           onImport={(file) => void importProject(file)}
           onOpen={(next) => void openProject(next)}
+          onDelete={(next) => void deleteProject(next)}
         />
       ) : (
         <Workspace

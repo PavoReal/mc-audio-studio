@@ -50,6 +50,11 @@ export async function removePrivateFile(path: string): Promise<void> {
   await directory.removeEntry(filename).catch(() => undefined);
 }
 
+export async function removePrivateDirectory(path: string): Promise<void> {
+  const [directory, name] = await parentFor(path, false);
+  await directory.removeEntry(name, { recursive: true }).catch(() => undefined);
+}
+
 export async function storageEstimate(requestPersistence = false) {
   const persisted = requestPersistence && navigator.storage.persist
     ? await navigator.storage.persist().catch(() => false)

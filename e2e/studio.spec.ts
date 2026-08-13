@@ -1,18 +1,59 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-test("creates a local project and opens the three-panel studio", async ({ page }) => {
+async function createPack(page: Page) {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: /make every sound/i })).toBeVisible();
-  await expect(page.getByText(/no cloud/i)).toBeVisible();
-  await page.getByRole("button", { name: /create new pack/i }).click();
+  await expect(page.getByRole("heading", { name: /create new sound pack/i })).toBeVisible();
+  await page.getByRole("button", { name: /^create$/i }).click();
+}
+
+test("shows the create screen on a fresh profile and opens the three-panel studio", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: /create new sound pack/i })).toBeVisible();
+  await expect(page.getByText(/local only/i)).toBeVisible();
+  await expect(page.getByLabel(/pack name/i)).toHaveValue("My Sound Pack");
+  await page.getByRole("button", { name: /^create$/i }).click();
   await expect(page.getByRole("heading", { name: /find a moment/i })).toBeVisible();
   await expect(page.getByRole("heading", { name: /sound details/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /export pack/i })).toBeVisible();
 });
 
-test("switches between mansion-peak backgrounds", async ({ page }) => {
-  await page.goto("/");
+test("lists saved packs in the save selector and deletes with confirmation", async ({ page }) => {
+  await createPack(page);
+  await expect(page.getByRole("heading", { name: /find a moment/i })).toBeVisible();
+  await page.getByRole("button", { name: /back to projects/i }).click();
+  await expect(page.getByRole("heading", { name: /select sound pack/i })).toBeVisible();
+  const row = page.locator(".save-row", { hasText: "My Sound Pack" });
+  await expect(row).toContainText(/format \d/);
+  await expect(row).toContainText(/0 edited/);
+
   await page.getByRole("button", { name: /create new pack/i }).click();
+  await expect(page.getByRole("heading", { name: /create new sound pack/i })).toBeVisible();
+  await page.getByRole("button", { name: /back/i }).click();
+  await expect(page.getByRole("heading", { name: /select sound pack/i })).toBeVisible();
+
+  await row.getByRole("button", { name: /delete my sound pack/i }).click();
+  await expect(row).toContainText(/delete pack and its audio\?/i);
+  await row.getByRole("button", { name: /^no$/i }).click();
+  await expect(row).not.toContainText(/delete pack and its audio\?/i);
+  await row.getByRole("button", { name: /delete my sound pack/i }).click();
+  await row.getByRole("button", { name: /^yes$/i }).click();
+  await expect(page.getByRole("heading", { name: /create new sound pack/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /back/i })).toHaveCount(0);
+});
+
+test("creates a pack with a custom name and backdrop", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel(/pack name/i).fill("Cave Noises");
+  await page.getByRole("button", { name: /dusk/i }).click();
+  await expect(page.locator("main.landing")).toHaveClass(/scene-dusk/);
+  await page.getByRole("button", { name: /^create$/i }).click();
+  const scene = page.locator("main.workspace");
+  await expect(scene).toHaveClass(/scene-dusk/);
+  await expect(page.locator(".pack-title input")).toHaveValue("Cave Noises");
+});
+
+test("switches between mansion-peak backgrounds", async ({ page }) => {
+  await createPack(page);
   const scene = page.locator("main.workspace");
   await expect(scene).toHaveClass(/scene-day/);
   await page.getByLabel("Background scene").selectOption("dusk");
@@ -21,8 +62,7 @@ test("switches between mansion-peak backgrounds", async ({ page }) => {
 
 test("keeps the category filters readable instead of flex-shrinking them", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/");
-  await page.getByRole("button", { name: /create new pack/i }).click();
+  await createPack(page);
   const strip = page.getByLabel("Sound categories");
   const firstFilters = strip.getByRole("button").filter({ visible: true });
   await expect(strip).toBeVisible();
@@ -69,8 +109,7 @@ test("encodes Minecraft-compatible Ogg Vorbis in the dedicated worker", async ({
 
 test("collapses the inspector into a drawer below 1280px", async ({ page }) => {
   await page.setViewportSize({ width: 1279, height: 800 });
-  await page.goto("/");
-  await page.getByRole("button", { name: /create new pack/i }).click();
+  await createPack(page);
   await page.locator('button[title="Open inspector"]').click();
   await expect(page.locator(".inspector-panel")).toHaveClass(/open/);
   await expect(page.getByRole("button", { name: /close inspector drawer/i })).toBeVisible();
@@ -80,8 +119,7 @@ test("recovers visibly when microphone permission is denied", async ({ page }) =
   await page.addInitScript(() => {
     navigator.mediaDevices.getUserMedia = async () => { throw new DOMException("Permission denied", "NotAllowedError"); };
   });
-  await page.goto("/");
-  await page.getByRole("button", { name: /create new pack/i }).click();
+  await createPack(page);
   await page.getByRole("button", { name: "Record" }).click();
   await expect(page.getByRole("alert")).toContainText(/microphone access was denied/i);
   await expect(page.getByRole("button", { name: "Record" })).toBeEnabled();
@@ -89,8 +127,7 @@ test("recovers visibly when microphone permission is denied", async ({ page }) =
 
 test("records a fake mono microphone take and autosaves it", async ({ page, context }) => {
   await context.grantPermissions(["microphone"]);
-  await page.goto("/");
-  await page.getByRole("button", { name: /create new pack/i }).click();
+  await createPack(page);
   await page.getByRole("button", { name: "Record" }).click();
   await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
   await page.waitForTimeout(350);
@@ -120,8 +157,7 @@ test("records a fake mono microphone take and autosaves it", async ({ page, cont
 
 test("drag on the waveform sets the trim selection", async ({ page, context }) => {
   await context.grantPermissions(["microphone"]);
-  await page.goto("/");
-  await page.getByRole("button", { name: /create new pack/i }).click();
+  await createPack(page);
   await page.getByRole("button", { name: "Record" }).click();
   await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
   await page.waitForTimeout(350);
