@@ -37,7 +37,17 @@ export default defineConfig({
         additionalManifestEntries: [{ url: "/catalogs/index.json", revision: null }],
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
         globPatterns: ["**/*.{js,css,html,svg,png,wasm}"],
+        navigateFallbackDenylist: [/^\/vanilla-assets\//],
         runtimeCaching: [
+          {
+            urlPattern: ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith("/vanilla-assets/"),
+            handler: "CacheFirst",
+            options: {
+              cacheName: "vanilla-sound-previews",
+              expiration: { maxEntries: 600, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheableResponse: { statuses: [200] }
+            }
+          },
           {
             urlPattern: /^https:\/\/resources\.download\.minecraft\.net\//,
             handler: "CacheFirst",

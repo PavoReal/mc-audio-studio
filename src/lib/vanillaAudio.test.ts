@@ -35,11 +35,23 @@ describe("fetchVanillaBuffer", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("caches failures as null instead of retrying", async () => {
+  it("retries after a failure instead of caching null", async () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error("offline"));
     vi.stubGlobal("fetch", fetchMock);
     await expect(fetchVanillaBuffer(variant("broken"))).resolves.toBeNull();
     await expect(fetchVanillaBuffer(variant("broken"))).resolves.toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("shares one in-flight request while a fetch is pending", async () => {
+    let reject!: (reason: Error) => void;
+    const fetchMock = vi.fn().mockReturnValue(new Promise((_, r) => { reject = r; }));
+    vi.stubGlobal("fetch", fetchMock);
+    const first = fetchVanillaBuffer(variant("pending"));
+    const second = fetchVanillaBuffer(variant("pending"));
+    expect(second).toBe(first);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    reject(new Error("offline"));
+    await expect(first).resolves.toBeNull();
   });
 });

@@ -17,6 +17,7 @@ npm-debug.log*
 !.env.example
 .mc-sound-studio/
 .cache/
+.wrangler/
 
 # Legacy local project data
 soundpack.json

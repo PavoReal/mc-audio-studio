@@ -7,8 +7,9 @@ const buffers = new Map<string, Promise<AudioBuffer | null>>();
  * Fetches and decodes a vanilla sound, cached by object hash. The Mojang CDN
  * sends no CORS headers, so the request goes through the same-origin
  * /vanilla-assets path (proxied by Vite in dev/preview; production hosts need
- * an equivalent rewrite). Resolves to null on any failure (network/CORS/decode);
- * failures are cached too, so a broken asset is only attempted once per session.
+ * an equivalent rewrite; in production a Cloudflare Pages Function serves it).
+ * Resolves to null on any failure (network/CORS/decode); failed entries are
+ * evicted so the next call retries instead of sticking for the session.
  */
 export function fetchVanillaBuffer(variant: CatalogVariant): Promise<AudioBuffer | null> {
   const hash = variant.objectHash;
@@ -23,7 +24,10 @@ export function fetchVanillaBuffer(variant: CatalogVariant): Promise<AudioBuffer
         return response.arrayBuffer();
       })
       .then((data) => audioContext().decodeAudioData(data))
-      .catch(() => null);
+      .catch(() => {
+        buffers.delete(hash);
+        return null;
+      });
     buffers.set(hash, entry);
   }
   return entry;
