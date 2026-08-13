@@ -10,6 +10,8 @@ export interface WaveColors {
   zeroLine: string;
   guide: string;
   clip: string;
+  /** Translucent shade painted over trimmed-away regions outside the selection. */
+  trimmedShade: string;
   laneBorder: string;
   rulerBg: string;
   rulerText: string;
@@ -27,6 +29,7 @@ export const WAVE_COLORS: WaveColors = {
   zeroLine: "#8fabb3",
   guide: "#1c4356",
   clip: "#e2564f",
+  trimmedShade: "rgba(4, 17, 24, 0.5)",
   laneBorder: "#05161e",
   rulerBg: "#0e3242",
   rulerText: "#b3cfd4",
@@ -140,6 +143,12 @@ export function drawWaveform(ctx: CanvasRenderingContext2D, options: DrawWavefor
       ctx.fillStyle = colors.laneBorder;
       ctx.fillRect(0, Math.round(laneTop), width, dpr);
     }
+  }
+
+  if (options.selection && duration > 0) {
+    ctx.fillStyle = colors.trimmedShade;
+    if (selectionStartX > 0) ctx.fillRect(0, 0, selectionStartX, height);
+    if (selectionEndX < width) ctx.fillRect(selectionEndX, 0, width - selectionEndX, height);
   }
 }
 
