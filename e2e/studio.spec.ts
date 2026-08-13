@@ -6,6 +6,42 @@ async function createPack(page: Page) {
   await page.getByRole("button", { name: /^create$/i }).click();
 }
 
+function testWav(seconds = 2): Buffer {
+  const sampleRate = 48_000;
+  const sampleCount = Math.floor(sampleRate * seconds);
+  const buffer = Buffer.alloc(44 + sampleCount * 2);
+  buffer.write("RIFF", 0);
+  buffer.writeUInt32LE(36 + sampleCount * 2, 4);
+  buffer.write("WAVE", 8);
+  buffer.write("fmt ", 12);
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20);
+  buffer.writeUInt16LE(1, 22);
+  buffer.writeUInt32LE(sampleRate, 24);
+  buffer.writeUInt32LE(sampleRate * 2, 28);
+  buffer.writeUInt16LE(2, 32);
+  buffer.writeUInt16LE(16, 34);
+  buffer.write("data", 36);
+  buffer.writeUInt32LE(sampleCount * 2, 40);
+  for (let index = 0; index < sampleCount; index += 1) {
+    const sample = Math.sin(index / sampleRate * 440 * Math.PI * 2) * 0.2;
+    buffer.writeInt16LE(Math.round(sample * 0x7fff), 44 + index * 2);
+  }
+  return buffer;
+}
+
+async function dragPlaybackMarker(page: Page, fraction: number) {
+  const marker = page.getByRole("slider", { name: "Playback position" });
+  const track = page.locator(".wave-track");
+  const [markerBox, trackBox] = await Promise.all([marker.boundingBox(), track.boundingBox()]);
+  expect(markerBox).not.toBeNull();
+  expect(trackBox).not.toBeNull();
+  await page.mouse.move(markerBox!.x + markerBox!.width / 2, markerBox!.y + markerBox!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(trackBox!.x + trackBox!.width * fraction, trackBox!.y + trackBox!.height / 2, { steps: 5 });
+  await page.mouse.up();
+}
+
 test("shows the create screen on a fresh profile and opens the three-panel studio", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /create new sound pack/i })).toBeVisible();
@@ -162,4 +198,60 @@ test("drag on the waveform sets the trim selection", async ({ page, context }) =
   await page.mouse.up();
   const times = page.locator(".waveform-times span");
   await expect(times.first()).not.toHaveText("0:00.0");
+});
+
+test("drags one shared playback marker while preserving play and pause state", async ({ page }) => {
+  const wav = testWav();
+  await page.route("**/vanilla-assets/**", (route) => route.fulfill({
+    status: 200,
+    contentType: "audio/wav",
+    body: wav
+  }));
+  await createPack(page);
+
+  const marker = page.getByRole("slider", { name: "Playback position" });
+  await expect(marker).toBeVisible();
+  await expect.poll(async () => Number(await marker.getAttribute("aria-valuemax"))).toBeCloseTo(2, 1);
+
+  const vanilla = page.getByRole("button", { name: "Vanilla" });
+  await vanilla.click();
+  await expect(vanilla.locator(".lucide-pause")).toBeVisible();
+  await dragPlaybackMarker(page, 0.6);
+  await expect(vanilla.locator(".lucide-pause")).toBeVisible();
+
+  await vanilla.click();
+  await expect(vanilla.locator(".lucide-play")).toBeVisible();
+  await dragPlaybackMarker(page, 0.25);
+  await expect(vanilla.locator(".lucide-play")).toBeVisible();
+  const pausedAt = Number(await marker.getAttribute("aria-valuenow"));
+  await page.waitForTimeout(150);
+  expect(Number(await marker.getAttribute("aria-valuenow"))).toBeCloseTo(pausedAt, 2);
+
+  const input = page.locator('input[type="file"]');
+  await input.setInputFiles({ name: "two-seconds.wav", mimeType: "audio/wav", buffer: wav });
+  await expect(page.getByText("Replacement ready")).toBeVisible();
+  await expect(marker).toHaveAttribute("aria-valuenow", "0");
+
+  const custom = page.getByRole("button", { name: "Custom" });
+  await custom.click();
+  await expect(custom.locator(".lucide-pause")).toBeVisible();
+  await dragPlaybackMarker(page, 0.7);
+  await expect(custom.locator(".lucide-pause")).toBeVisible();
+  await custom.click();
+  await expect(custom.locator(".lucide-play")).toBeVisible();
+
+  const trimStart = page.getByRole("slider", { name: "Trim start" });
+  for (let index = 0; index < 5; index += 1) await trimStart.press("Shift+ArrowRight");
+  await dragPlaybackMarker(page, 0);
+  expect(Number(await marker.getAttribute("aria-valuenow"))).toBeGreaterThanOrEqual(0.49);
+
+  await dragPlaybackMarker(page, 1);
+  await custom.click();
+  await expect(custom.locator(".lucide-pause")).toBeVisible();
+  await expect.poll(async () => Number(await marker.getAttribute("aria-valuenow"))).toBeLessThan(1);
+
+  await custom.click();
+  await dragPlaybackMarker(page, 0.6);
+  await input.setInputFiles({ name: "second-take.wav", mimeType: "audio/wav", buffer: wav });
+  await expect(marker).toHaveAttribute("aria-valuenow", "0");
 });

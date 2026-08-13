@@ -18,19 +18,19 @@ export interface WaveColors {
 
 /** Minecraft night-sky palette; mirrored as --wave-* vars in styles.css. */
 export const WAVE_COLORS: WaveColors = {
-  trackBg: "#050f20",
-  selectionBg: "#12304f",
-  peak: "#6fa32c",
-  rms: "#b9ff57",
-  peakSelected: "#8cc944",
-  rmsSelected: "#dcff9e",
-  zeroLine: "#7f92a8",
-  guide: "#152840",
-  clip: "#ff655e",
-  laneBorder: "#02060d",
-  rulerBg: "#08172d",
-  rulerText: "#a3bad2",
-  rulerTick: "#546c86"
+  trackBg: "#0b2b39",
+  selectionBg: "#1b4c5f",
+  peak: "#79a334",
+  rms: "#bce254",
+  peakSelected: "#95bd4c",
+  rmsSelected: "#e0f0a8",
+  zeroLine: "#8fabb3",
+  guide: "#1c4356",
+  clip: "#e2564f",
+  laneBorder: "#05161e",
+  rulerBg: "#0e3242",
+  rulerText: "#b3cfd4",
+  rulerTick: "#5d8392"
 };
 
 const TICK_STEPS = [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10, 30, 60];

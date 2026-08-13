@@ -132,71 +132,230 @@ export async function encodeVorbis(buffer: AudioBuffer): Promise<Blob> {
   });
 }
 
-let previewSource: AudioBufferSourceNode | null = null;
-let remotePreview: HTMLAudioElement | null = null;
+let activePreview: PreviewHandle | null = null;
+let previewRequest = 0;
 
 export function stopPreview(): void {
-  try { previewSource?.stop(); } catch { /* already stopped */ }
-  previewSource = null;
-  if (remotePreview) {
-    remotePreview.pause();
-    remotePreview.src = "";
-    remotePreview = null;
-  }
+  previewRequest += 1;
+  const current = activePreview;
+  activePreview = null;
+  current?.stop();
 }
 
 export interface PreviewHandle {
-  /** Current playback position in source-time seconds, or null once finished/stopped. */
-  getTime(): number | null;
+  /** Current playback position in source-time seconds. */
+  getTime(): number;
+  pause(): void;
+  /** Seeks to source-time seconds and returns the clamped position. */
+  seek(seconds: number): number;
+  resume(): Promise<void>;
   stop(): void;
+  /** Resolves only after natural completion, an error, or an explicit stop. */
   done: Promise<void>;
 }
 
-export async function previewEditedTake(take: AudioTake, recipe: EditRecipe): Promise<PreviewHandle> {
-  stopPreview();
-  const source = await decodeAudio(await readBlob(take.opfsPath));
-  const context = audioContext();
-  await context.resume();
-  const node = context.createBufferSource();
-  const gain = context.createGain();
-  node.buffer = source;
-  gain.gain.value = 10 ** (recipe.gainDb / 20);
-  node.connect(gain).connect(context.destination);
-  const end = Math.min(recipe.trimEnd ?? source.duration, source.duration);
-  node.start(0, recipe.trimStart, Math.max(0, end - recipe.trimStart));
-  previewSource = node;
-  const startedAt = context.currentTime;
-  const done = new Promise<void>((resolve) => {
-    node.onended = () => {
-      if (previewSource === node) previewSource = null;
-      resolve();
-    };
-  });
-  return {
-    getTime: () => previewSource === node
-      ? Math.min(end, recipe.trimStart + context.currentTime - startedAt)
-      : null,
-    stop: () => { try { node.stop(); } catch { /* already stopped */ } },
-    done
-  };
+function clampPosition(value: number, start: number, end: number): number {
+  return Math.max(start, Math.min(end, Number.isFinite(value) ? value : start));
 }
 
-export async function previewRemote(url: string): Promise<PreviewHandle> {
-  stopPreview();
-  const audio = new Audio(url);
-  remotePreview = audio;
-  const done = new Promise<void>((resolve) => {
-    const finish = () => resolve();
-    audio.addEventListener("ended", finish, { once: true });
-    audio.addEventListener("error", finish, { once: true });
-    audio.addEventListener("pause", finish, { once: true });
+function setActivePreview(handle: PreviewHandle): void {
+  activePreview = handle;
+  void handle.done.then(() => {
+    if (activePreview === handle) activePreview = null;
   });
-  await audio.play();
-  return {
-    getTime: () => remotePreview === audio && !audio.paused && !audio.ended ? audio.currentTime : null,
-    stop: () => audio.pause(),
+}
+
+export async function previewEditedTake(take: AudioTake, recipe: EditRecipe, startAt = recipe.trimStart): Promise<PreviewHandle> {
+  stopPreview();
+  const request = previewRequest;
+  const source = await decodeAudio(await readBlob(take.opfsPath));
+  if (request !== previewRequest) throw new Error("Preview was replaced.");
+  const context = audioContext();
+  const gain = context.createGain();
+  gain.gain.value = 10 ** (recipe.gainDb / 20);
+  gain.connect(context.destination);
+  const start = clampPosition(recipe.trimStart, 0, source.duration);
+  const end = clampPosition(recipe.trimEnd ?? source.duration, start, source.duration);
+  let position = clampPosition(startAt, start, end);
+  if (position >= end - 0.005) position = start;
+  let node: AudioBufferSourceNode | null = null;
+  let startedAt = 0;
+  let startedFrom = position;
+  let playing = false;
+  let terminal = false;
+  let resolveDone!: () => void;
+  const done = new Promise<void>((resolve) => { resolveDone = resolve; });
+
+  function getTime(): number {
+    return playing ? Math.min(end, startedFrom + context.currentTime - startedAt) : position;
+  }
+
+  function stopNode(): void {
+    const current = node;
+    node = null;
+    if (!current) return;
+    current.onended = null;
+    try { current.stop(); } catch { /* already stopped */ }
+    current.disconnect();
+  }
+
+  function finish(): void {
+    if (terminal) return;
+    position = end;
+    playing = false;
+    node = null;
+    terminal = true;
+    gain.disconnect();
+    resolveDone();
+  }
+
+  function startNode(): void {
+    if (terminal || position >= end) {
+      finish();
+      return;
+    }
+    const next = context.createBufferSource();
+    next.buffer = source;
+    next.connect(gain);
+    startedFrom = position;
+    startedAt = context.currentTime;
+    playing = true;
+    node = next;
+    next.onended = () => {
+      if (node !== next || !playing) return;
+      finish();
+    };
+    next.start(0, position, end - position);
+  }
+
+  const handle: PreviewHandle = {
+    getTime,
+    pause: () => {
+      if (!playing || terminal) return;
+      position = getTime();
+      playing = false;
+      stopNode();
+    },
+    seek: (seconds) => {
+      const wasPlaying = playing;
+      if (wasPlaying) {
+        playing = false;
+        stopNode();
+      }
+      position = clampPosition(seconds, start, end);
+      if (wasPlaying) startNode();
+      return position;
+    },
+    resume: async () => {
+      if (playing || terminal) return;
+      await context.resume();
+      if (terminal) return;
+      startNode();
+    },
+    stop: () => {
+      if (terminal) return;
+      if (playing) position = getTime();
+      playing = false;
+      terminal = true;
+      stopNode();
+      gain.disconnect();
+      resolveDone();
+    },
     done
   };
+  setActivePreview(handle);
+  try {
+    await handle.resume();
+    return handle;
+  } catch (error) {
+    handle.stop();
+    throw error;
+  }
+}
+
+export async function previewRemote(url: string, startAt = 0): Promise<PreviewHandle> {
+  stopPreview();
+  const request = previewRequest;
+  const audio = new Audio(url);
+  audio.preload = "auto";
+  try {
+    await new Promise<void>((resolve, reject) => {
+      if (audio.readyState >= 1) {
+        resolve();
+        return;
+      }
+      const loaded = () => { cleanup(); resolve(); };
+      const failed = () => { cleanup(); reject(new Error("The preview audio could not be loaded.")); };
+      const cleanup = () => {
+        audio.removeEventListener("loadedmetadata", loaded);
+        audio.removeEventListener("error", failed);
+      };
+      audio.addEventListener("loadedmetadata", loaded);
+      audio.addEventListener("error", failed);
+      audio.load();
+    });
+  } catch (error) {
+    audio.src = "";
+    throw error;
+  }
+  if (request !== previewRequest) {
+    audio.src = "";
+    throw new Error("Preview was replaced.");
+  }
+  const end = Number.isFinite(audio.duration) ? audio.duration : Number.POSITIVE_INFINITY;
+  let position = clampPosition(startAt, 0, end);
+  if (Number.isFinite(end) && position >= end - 0.005) position = 0;
+  let terminal = false;
+  let resolveDone!: () => void;
+  const done = new Promise<void>((resolve) => { resolveDone = resolve; });
+
+  function finish(): void {
+    if (terminal) return;
+    position = Number.isFinite(audio.duration) ? audio.duration : audio.currentTime;
+    terminal = true;
+    resolveDone();
+  }
+
+  audio.addEventListener("ended", finish);
+  audio.addEventListener("error", finish);
+  const handle: PreviewHandle = {
+    getTime: () => terminal || audio.paused ? position : audio.currentTime,
+    pause: () => {
+      if (terminal || audio.paused) return;
+      position = audio.currentTime;
+      audio.pause();
+    },
+    seek: (seconds) => {
+      position = clampPosition(seconds, 0, end);
+      audio.currentTime = position;
+      return audio.currentTime;
+    },
+    resume: async () => {
+      if (terminal || !audio.paused) return;
+      audio.currentTime = position;
+      await audio.play();
+    },
+    stop: () => {
+      if (terminal) return;
+      position = audio.currentTime;
+      terminal = true;
+      audio.pause();
+      audio.removeEventListener("ended", finish);
+      audio.removeEventListener("error", finish);
+      audio.src = "";
+      resolveDone();
+    },
+    done
+  };
+  setActivePreview(handle);
+  try {
+    handle.seek(position);
+    await handle.resume();
+    return handle;
+  } catch (error) {
+    handle.stop();
+    throw error;
+  }
 }
 
 function writeString(view: DataView, offset: number, value: string) {

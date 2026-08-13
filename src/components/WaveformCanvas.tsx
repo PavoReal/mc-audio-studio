@@ -7,7 +7,10 @@ interface Props {
   duration: number;
   selection: { start: number; end: number } | null;
   onSelectionChange?: (start: number, end: number) => void;
-  playheadTime: number | null;
+  playheadTime: number;
+  onPlayheadDragStart?: () => void;
+  onPlayheadChange?: (time: number) => void;
+  onPlayheadDragEnd?: () => void;
   interactive: boolean;
   /** Reports the track width in device pixels so callers can size waveform bins. */
   onWidth?: (deviceWidth: number) => void;
@@ -33,6 +36,7 @@ export function WaveformCanvas(props: Props) {
   const wrapper = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const drag = useRef<{ mode: DragMode; anchor: number; moved: boolean } | null>(null);
+  const playheadDrag = useRef<number | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const dpr = useDevicePixelRatio();
   const { duration, onWidth } = props;
@@ -131,6 +135,48 @@ export function WaveformCanvas(props: Props) {
     else emit(start, Math.min(duration, Math.max(end + step, start + MIN_SPAN)));
   }
 
+  function onPlayheadPointerDown(event: React.PointerEvent<HTMLSpanElement>) {
+    if (!props.onPlayheadChange || duration <= 0) return;
+    event.stopPropagation();
+    props.onPlayheadDragStart?.();
+    props.onPlayheadChange(timeAt(event.clientX));
+    playheadDrag.current = event.pointerId;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function onPlayheadPointerMove(event: React.PointerEvent<HTMLSpanElement>) {
+    if (playheadDrag.current !== event.pointerId) return;
+    event.stopPropagation();
+    props.onPlayheadChange?.(timeAt(event.clientX));
+  }
+
+  function finishPlayheadDrag(event: React.PointerEvent<HTMLSpanElement>) {
+    if (playheadDrag.current !== event.pointerId) return;
+    event.stopPropagation();
+    playheadDrag.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    props.onPlayheadDragEnd?.();
+  }
+
+  function onPlayheadLostPointerCapture(event: React.PointerEvent<HTMLSpanElement>) {
+    if (playheadDrag.current !== event.pointerId) return;
+    playheadDrag.current = null;
+    props.onPlayheadDragEnd?.();
+  }
+
+  function onPlayheadKeyDown(event: React.KeyboardEvent<HTMLSpanElement>) {
+    const direction = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+    if (!direction || !props.onPlayheadChange) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const step = event.shiftKey ? 0.1 : 0.01;
+    props.onPlayheadDragStart?.();
+    props.onPlayheadChange(Math.max(0, Math.min(duration, props.playheadTime + direction * step)));
+    props.onPlayheadDragEnd?.();
+  }
+
   const toPercent = (seconds: number) => duration > 0 ? `${seconds / duration * 100}%` : "0%";
 
   return (
@@ -157,8 +203,23 @@ export function WaveformCanvas(props: Props) {
           onKeyDown={(event) => onHandleKeyDown(edge, event)}
         />;
       })}
-      {props.playheadTime !== null && duration > 0 && (
-        <span className="wave-playhead" style={{ left: toPercent(props.playheadTime) }} />
+      {duration > 0 && (
+        <span
+          className="wave-playhead"
+          role="slider"
+          tabIndex={0}
+          aria-label="Playback position"
+          aria-valuemin={0}
+          aria-valuemax={duration}
+          aria-valuenow={props.playheadTime}
+          style={{ left: toPercent(props.playheadTime) }}
+          onPointerDown={onPlayheadPointerDown}
+          onPointerMove={onPlayheadPointerMove}
+          onPointerUp={finishPlayheadDrag}
+          onPointerCancel={finishPlayheadDrag}
+          onLostPointerCapture={onPlayheadLostPointerCapture}
+          onKeyDown={onPlayheadKeyDown}
+        />
       )}
     </div>
   );

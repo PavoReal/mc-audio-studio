@@ -22,6 +22,7 @@ interface Props {
 }
 
 const round3 = (value: number) => Math.round(value * 1000) / 1000;
+type PreviewSource = "vanilla" | "custom";
 
 export function WaveformEditor(props: Props) {
   const activeTake = props.replacement?.takes.find((take) => take.id === props.replacement?.activeTakeId) ?? null;
@@ -29,8 +30,10 @@ export function WaveformEditor(props: Props) {
   const [binWidth, setBinWidth] = useState(0);
   const { envelope: takeEnvelope, loading: takeLoading } = useWaveform(activeTake, binWidth || 640);
   const vanilla = useVanillaWaveform(activeTake ? null : props.variant, binWidth || 640);
-  const [playing, setPlaying] = useState<"vanilla" | "custom" | null>(null);
+  const [previewSource, setPreviewSource] = useState<PreviewSource | null>(null);
+  const [playing, setPlaying] = useState(false);
   const [handle, setHandle] = useState<PreviewHandle | null>(null);
+  const [playheadPosition, setPlayheadPosition] = useState(0);
   const [recording, setRecording] = useState(false);
   const [recordTime, setRecordTime] = useState(0);
   const [recordPeak, setRecordPeak] = useState(0);
@@ -39,7 +42,13 @@ export function WaveformEditor(props: Props) {
   const [microphoneId, setMicrophoneId] = useState("");
   const recorder = useRef<MicrophoneRecorder | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  const playheadTime = usePlayhead(handle);
+  const handleRef = useRef<PreviewHandle | null>(null);
+  const sourceRef = useRef<PreviewSource | null>(null);
+  const playingRef = useRef(false);
+  const positionRef = useRef(0);
+  const playbackRequest = useRef(0);
+  const resumeAfterDrag = useRef(false);
+  const playheadTime = usePlayhead(handle, playing, playheadPosition);
 
   const envelope = activeTake ? takeEnvelope : vanilla.envelope;
   const loading = activeTake ? takeLoading : vanilla.loading;
@@ -48,7 +57,40 @@ export function WaveformEditor(props: Props) {
   const laneCount = Math.max(1, envelope.length || Math.min(2, props.variant.channels || 1));
   const eventLabel = props.variant.events[0]?.replaceAll(".", " ") ?? "Unmapped sound";
 
-  useEffect(() => () => stopPreview(), [props.variant.path]);
+  function setPlaybackRunning(value: boolean) {
+    playingRef.current = value;
+    setPlaying(value);
+  }
+
+  function setPlaybackPosition(value: number) {
+    positionRef.current = value;
+    setPlayheadPosition(value);
+  }
+
+  function clearPlaybackHandle() {
+    playbackRequest.current += 1;
+    stopPreview();
+    handleRef.current = null;
+    setHandle(null);
+    setPlaybackRunning(false);
+  }
+
+  useEffect(() => {
+    playbackRequest.current += 1;
+    stopPreview();
+    handleRef.current = null;
+    sourceRef.current = null;
+    playingRef.current = false;
+    positionRef.current = 0;
+    setHandle(null);
+    setPreviewSource(null);
+    setPlaying(false);
+    setPlayheadPosition(0);
+    return () => {
+      playbackRequest.current += 1;
+      stopPreview();
+    };
+  }, [props.variant.path, activeTake?.id]);
   useEffect(() => {
     if (!navigator.mediaDevices?.enumerateDevices) return;
     const refresh = async () => {
@@ -72,34 +114,103 @@ export function WaveformEditor(props: Props) {
     return () => window.clearInterval(timer);
   }, [recording]);
 
-  function watchPlayback(next: PreviewHandle, label: "vanilla" | "custom") {
+  function watchPlayback(next: PreviewHandle, label: PreviewSource) {
+    handleRef.current = next;
+    sourceRef.current = label;
     setHandle(next);
+    setPreviewSource(label);
+    setPlaybackPosition(next.getTime());
+    setPlaybackRunning(true);
     void next.done.then(() => {
-      setPlaying((current) => current === label ? null : current);
-      setHandle((current) => current === next ? null : current);
+      if (handleRef.current !== next) return;
+      setPlaybackPosition(next.getTime());
+      handleRef.current = null;
+      setHandle(null);
+      setPlaybackRunning(false);
     });
   }
 
-  async function toggleVanilla() {
-    if (!props.variant.objectHash) return;
-    if (playing === "vanilla") { stopPreview(); setPlaying(null); return; }
-    setPlaying("vanilla");
+  async function startPlayback(label: PreviewSource) {
+    const request = playbackRequest.current + 1;
+    playbackRequest.current = request;
+    stopPreview();
+    handleRef.current = null;
+    setHandle(null);
+    setPlaybackRunning(false);
     try {
-      watchPlayback(await previewRemote(vanillaSoundUrl(props.variant)), "vanilla");
+      const next = label === "vanilla"
+        ? await previewRemote(vanillaSoundUrl(props.variant), positionRef.current)
+        : activeTake ? await previewEditedTake(activeTake, recipe, positionRef.current) : null;
+      if (!next) return;
+      if (playbackRequest.current !== request) {
+        next.stop();
+        return;
+      }
+      watchPlayback(next, label);
     } catch {
-      setPlaying(null);
+      if (playbackRequest.current === request) setPlaybackRunning(false);
     }
   }
 
-  async function toggleCustom() {
-    if (!activeTake) return;
-    if (playing === "custom") { stopPreview(); setPlaying(null); return; }
-    setPlaying("custom");
+  function pausePlayback() {
+    const current = handleRef.current;
+    if (!current || !playingRef.current) return;
+    current.pause();
+    setPlaybackPosition(current.getTime());
+    setPlaybackRunning(false);
+  }
+
+  async function resumePlayback() {
+    const current = handleRef.current;
+    if (!current || playingRef.current) return;
     try {
-      watchPlayback(await previewEditedTake(activeTake, recipe), "custom");
+      await current.resume();
+      if (handleRef.current === current) setPlaybackRunning(true);
     } catch {
-      setPlaying(null);
+      if (handleRef.current === current) setPlaybackRunning(false);
     }
+  }
+
+  function togglePreview(label: PreviewSource) {
+    if (label === "vanilla" && !props.variant.objectHash) return;
+    if (label === "custom" && !activeTake) return;
+    if (sourceRef.current === label && handleRef.current) {
+      if (playingRef.current) pausePlayback();
+      else {
+        const end = label === "custom" ? trimEnd : duration;
+        if (positionRef.current >= end - 0.005) {
+          clearPlaybackHandle();
+          void startPlayback(label);
+        } else {
+          void resumePlayback();
+        }
+      }
+      return;
+    }
+    void startPlayback(label);
+  }
+
+  function onPlayheadDragStart() {
+    resumeAfterDrag.current = playingRef.current;
+    if (playingRef.current) pausePlayback();
+  }
+
+  function onPlayheadChange(time: number) {
+    let minimum = 0;
+    let maximum = duration;
+    if (sourceRef.current === "custom") {
+      minimum = recipe.trimStart;
+      maximum = trimEnd;
+    }
+    const requested = Math.max(minimum, Math.min(maximum, time));
+    const current = handleRef.current;
+    setPlaybackPosition(current ? current.seek(requested) : requested);
+  }
+
+  function onPlayheadDragEnd() {
+    const shouldResume = resumeAfterDrag.current;
+    resumeAfterDrag.current = false;
+    if (shouldResume) void resumePlayback();
   }
 
   async function toggleRecording() {
@@ -113,7 +224,7 @@ export function WaveformEditor(props: Props) {
         await props.onRecording(blob);
         return;
       }
-      stopPreview();
+      clearPlaybackHandle();
       const next = new MicrophoneRecorder();
       recorder.current = next;
       await next.start(microphoneId || undefined);
@@ -172,6 +283,9 @@ export function WaveformEditor(props: Props) {
             selection={activeTake ? { start: recipe.trimStart, end: trimEnd } : null}
             onSelectionChange={onSelectionChange}
             playheadTime={playheadTime}
+            onPlayheadDragStart={onPlayheadDragStart}
+            onPlayheadChange={onPlayheadChange}
+            onPlayheadDragEnd={onPlayheadDragEnd}
             interactive={Boolean(activeTake)}
             onWidth={setBinWidth}
           />
@@ -189,11 +303,11 @@ export function WaveformEditor(props: Props) {
       )}
 
       <div className="transport-row">
-        <button className="transport" onClick={toggleVanilla} disabled={!props.variant.objectHash} title="Preview vanilla reference">
-          {playing === "vanilla" ? <Pause size={17} /> : <Play size={17} />}<span>Vanilla</span>
+        <button className="transport" onClick={() => togglePreview("vanilla")} disabled={!props.variant.objectHash} title="Preview vanilla reference">
+          {previewSource === "vanilla" && playing ? <Pause size={17} /> : <Play size={17} />}<span>Vanilla</span>
         </button>
-        <button className="transport primary" onClick={toggleCustom} disabled={!activeTake} title="Preview custom sound">
-          {playing === "custom" ? <Pause size={17} /> : <Play size={17} />}<span>Custom</span>
+        <button className="transport primary" onClick={() => togglePreview("custom")} disabled={!activeTake} title="Preview custom sound">
+          {previewSource === "custom" && playing ? <Pause size={17} /> : <Play size={17} />}<span>Custom</span>
         </button>
         <span className="transport-divider" />
         <button className={`record-button ${recording ? "active" : ""}`} onClick={() => void toggleRecording()} disabled={Boolean(props.busy)}>
