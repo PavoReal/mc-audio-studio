@@ -1,6 +1,6 @@
 import { ArrowLeft, Download, Palette, PanelRightOpen, Settings2 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { catalogCategories } from "../lib/catalog";
+import { catalogCategories, ESSENTIALS_CATEGORY } from "../lib/catalog";
 import type { AudioTake, CatalogVariant, EditRecipe, SoundCatalog, StorageEstimate, StudioProject } from "../types";
 import { Inspector } from "./Inspector";
 import { SoundLibrary } from "./SoundLibrary";
@@ -29,7 +29,7 @@ interface Props {
 
 export function Workspace(props: Props) {
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("all");
+  const [category, setCategory] = useState(ESSENTIALS_CATEGORY);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const categories = useMemo(() => catalogCategories(props.catalog), [props.catalog]);
   const selected = props.catalog.variants[props.selectedPath] ?? Object.values(props.catalog.variants)[0];

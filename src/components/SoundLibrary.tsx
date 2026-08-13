@@ -1,5 +1,5 @@
 import { Check, Circle, Search, Sparkles } from "lucide-react";
-import { searchCatalog } from "../lib/catalog";
+import { ESSENTIALS_CATEGORY, searchCatalog } from "../lib/catalog";
 import { relativeSoundPath } from "../lib/format";
 import type { CatalogVariant, SoundCatalog, StudioProject } from "../types";
 
@@ -29,7 +29,7 @@ export function SoundLibrary(props: Props) {
         {props.query && <button onClick={() => props.onQuery("")} aria-label="Clear search">×</button>}
       </label>
       <div className="category-strip" aria-label="Sound categories">
-        {["all", ...props.categories].map((category) => (
+        {[ESSENTIALS_CATEGORY, "all", ...props.categories].map((category) => (
           <button key={category} className={props.category === category ? "active" : ""} onClick={() => props.onCategory(category)}>{category}</button>
         ))}
       </div>

@@ -56,6 +56,6 @@ export default defineConfig({
       }
     })
   ],
-  server: { port: 4173, strictPort: true, proxy: vanillaAssetProxy },
-  preview: { port: 4173, strictPort: true, proxy: vanillaAssetProxy }
+  server: { port: Number(process.env.PORT) || 4173, strictPort: true, proxy: vanillaAssetProxy },
+  preview: { port: Number(process.env.PORT) || 4173, strictPort: true, proxy: vanillaAssetProxy }
 });
