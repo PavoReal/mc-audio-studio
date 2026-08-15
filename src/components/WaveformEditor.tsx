@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CircleStop, Copy, FileAudio, Mic2, Pause, Play, RotateCcw, Upload, Volume2, X } from "lucide-react";
 import type { AudioTake, CatalogVariant, EditRecipe, SoundReplacement } from "../types";
 import { formatDuration, relativeSoundPath } from "../lib/format";
-import { MicrophoneRecorder, previewEditedTake, previewRemote, stopPreview, type PreviewHandle } from "../lib/audio";
+import { canPlayOggVorbis, MicrophoneRecorder, previewBuffer, previewEditedTake, previewRemote, stopPreview, unlockAudio, type PreviewHandle } from "../lib/audio";
 import { vanillaSoundUrl } from "../lib/catalog";
+import { fetchVanillaBuffer } from "../lib/vanillaAudio";
 import { useWaveform } from "../hooks/useWaveform";
 import { useVanillaWaveform } from "../hooks/useVanillaWaveform";
 import { usePlayhead } from "../hooks/usePlayhead";
@@ -34,6 +35,7 @@ export function WaveformEditor(props: Props) {
   const [playing, setPlaying] = useState(false);
   const [handle, setHandle] = useState<PreviewHandle | null>(null);
   const [playheadPosition, setPlayheadPosition] = useState(0);
+  const [playbackError, setPlaybackError] = useState("");
   const [recording, setRecording] = useState(false);
   const [recordTime, setRecordTime] = useState(0);
   const [recordPeak, setRecordPeak] = useState(0);
@@ -86,6 +88,7 @@ export function WaveformEditor(props: Props) {
     setPreviewSource(null);
     setPlaying(false);
     setPlayheadPosition(0);
+    setPlaybackError("");
     return () => {
       playbackRequest.current += 1;
       stopPreview();
@@ -137,9 +140,12 @@ export function WaveformEditor(props: Props) {
     handleRef.current = null;
     setHandle(null);
     setPlaybackRunning(false);
+    setPlaybackError("");
     try {
       const next = label === "vanilla"
-        ? await previewRemote(vanillaSoundUrl(props.variant), positionRef.current)
+        ? canPlayOggVorbis()
+          ? await previewRemote(vanillaSoundUrl(props.variant), positionRef.current)
+          : await previewBuffer(() => fetchVanillaBuffer(props.variant), positionRef.current)
         : activeTake ? await previewEditedTake(activeTake, recipe, positionRef.current) : null;
       if (!next) return;
       if (playbackRequest.current !== request) {
@@ -147,8 +153,11 @@ export function WaveformEditor(props: Props) {
         return;
       }
       watchPlayback(next, label);
-    } catch {
-      if (playbackRequest.current === request) setPlaybackRunning(false);
+    } catch (error) {
+      if (playbackRequest.current !== request) return;
+      setPlaybackRunning(false);
+      const message = error instanceof Error ? error.message : "";
+      if (message !== "Preview was replaced.") setPlaybackError(message || "Playback could not be started.");
     }
   }
 
@@ -172,6 +181,9 @@ export function WaveformEditor(props: Props) {
   }
 
   function togglePreview(label: PreviewSource) {
+    // Resume the audio context while the tap gesture is still active; iOS
+    // Safari refuses to start a suspended context outside a user gesture.
+    unlockAudio();
     if (label === "vanilla" && !props.variant.objectHash) return;
     if (label === "custom" && !activeTake) return;
     if (sourceRef.current === label && handleRef.current) {
@@ -317,9 +329,9 @@ export function WaveformEditor(props: Props) {
         <button className="transport" onClick={() => fileInput.current?.click()} disabled={Boolean(props.busy)}><Upload size={17} /><span>Import</span></button>
         <input ref={fileInput} className="sr-only" type="file" accept="audio/wav,audio/ogg,audio/mpeg,audio/flac,.wav,.ogg,.mp3,.flac" onChange={(event) => event.target.files?.[0] && void props.onImport(event.target.files[0])} />
       </div>
-      {(microphones.length > 1 || recordError) && <div className="microphone-options">
+      {(microphones.length > 1 || recordError || playbackError) && <div className="microphone-options">
         {microphones.length > 1 && <label>Microphone <select aria-label="Microphone device" value={microphoneId} onChange={(event) => setMicrophoneId(event.target.value)}>{microphones.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `Microphone ${index + 1}`}</option>)}</select></label>}
-        {recordError && <p role="alert">{recordError}</p>}
+        {(recordError || playbackError) && <p role="alert">{recordError || playbackError}</p>}
       </div>}
 
       <div className="edit-controls">

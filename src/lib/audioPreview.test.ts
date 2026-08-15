@@ -106,6 +106,25 @@ describe("preview playback handles", () => {
     await handle.done;
   });
 
+  it("plays a decoded vanilla buffer through the shared context", async () => {
+    const context = new FakeAudioContext();
+    vi.stubGlobal("AudioContext", function AudioContextMock() { return context; });
+    const { previewBuffer } = await import("./audio");
+    const handle = await previewBuffer(async () => context.buffer, 2);
+    expect(context.sources[0]?.starts[0]).toEqual([0, 2, 8]);
+    expect(context.resume).toHaveBeenCalled();
+    handle.stop();
+    await handle.done;
+  });
+
+  it("rejects a buffer preview when the sound cannot be loaded", async () => {
+    const context = new FakeAudioContext();
+    vi.stubGlobal("AudioContext", function AudioContextMock() { return context; });
+    const { previewBuffer } = await import("./audio");
+    await expect(previewBuffer(async () => null)).rejects.toThrow(/could not be loaded/);
+    expect(context.sources).toHaveLength(0);
+  });
+
   it("retains remote media time while paused and completes only at the end", async () => {
     const audio = new FakeAudio("/sound.ogg");
     vi.stubGlobal("Audio", function AudioMock() { return audio; });

@@ -1,4 +1,5 @@
 import type { AudioTake, EditRecipe } from "../types";
+import { decodeOggFallback } from "./oggDecode";
 import { readBlob, writeBlobAtomic } from "./opfs";
 
 let sharedAudioContext: AudioContext | null = null;
@@ -8,11 +9,57 @@ export function audioContext(): AudioContext {
   return sharedAudioContext;
 }
 
+/**
+ * Resumes the shared context from a user gesture. iOS Safari starts audio
+ * contexts as "suspended" (or "interrupted" after an audio-session change)
+ * and only starts them from a user gesture, so transport handlers call this
+ * synchronously before any asynchronous playback work.
+ */
+export function unlockAudio(): void {
+  const context = audioContext();
+  if (context.state !== "running") void context.resume().catch(() => undefined);
+}
+
+/**
+ * Discards the shared context so the next use creates a fresh one. While the
+ * microphone is open, iOS routes audio through the play-and-record ("call")
+ * audio session; a context created under that route can stay silent after
+ * recording ends, so the recorder resets the shared context on teardown.
+ */
+export function resetAudioContext(): void {
+  const stale = sharedAudioContext;
+  sharedAudioContext = null;
+  void stale?.close().catch(() => undefined);
+}
+
+let oggMediaSupport: boolean | null = null;
+
+/**
+ * True when media elements can play Ogg Vorbis. Safari cannot, so vanilla
+ * previews decode through the WebAssembly fallback there instead.
+ */
+export function canPlayOggVorbis(): boolean {
+  oggMediaSupport ??= typeof Audio !== "undefined" && new Audio().canPlayType('audio/ogg; codecs="vorbis"') !== "";
+  return oggMediaSupport;
+}
+
+export async function decodeAudioBytes(data: ArrayBuffer): Promise<AudioBuffer> {
+  try {
+    // Some browsers detach the input buffer, so native decode gets a copy
+    // and the original stays available for the fallback decoder.
+    return await audioContext().decodeAudioData(data.slice(0));
+  } catch (error) {
+    const fallback = await decodeOggFallback(data);
+    if (fallback) return fallback;
+    throw error;
+  }
+}
+
 export async function decodeAudio(blob: Blob): Promise<AudioBuffer> {
   if (blob.size > 512 * 1024 ** 2) {
     throw new Error("Audio larger than 512 MiB can be preserved but not edited in this release.");
   }
-  return audioContext().decodeAudioData(await blob.arrayBuffer());
+  return decodeAudioBytes(await blob.arrayBuffer());
 }
 
 export interface WaveformPoint {
@@ -165,17 +212,18 @@ function setActivePreview(handle: PreviewHandle): void {
   });
 }
 
-export async function previewEditedTake(take: AudioTake, recipe: EditRecipe, startAt = recipe.trimStart): Promise<PreviewHandle> {
-  stopPreview();
-  const request = previewRequest;
-  const source = await decodeAudio(await readBlob(take.opfsPath));
-  if (request !== previewRequest) throw new Error("Preview was replaced.");
+async function startBufferPreview(
+  source: AudioBuffer,
+  trim: { start: number; end: number | null },
+  gainDb: number,
+  startAt: number
+): Promise<PreviewHandle> {
   const context = audioContext();
   const gain = context.createGain();
-  gain.gain.value = 10 ** (recipe.gainDb / 20);
+  gain.gain.value = 10 ** (gainDb / 20);
   gain.connect(context.destination);
-  const start = clampPosition(recipe.trimStart, 0, source.duration);
-  const end = clampPosition(recipe.trimEnd ?? source.duration, start, source.duration);
+  const start = clampPosition(trim.start, 0, source.duration);
+  const end = clampPosition(trim.end ?? source.duration, start, source.duration);
   let position = clampPosition(startAt, start, end);
   if (position >= end - 0.005) position = start;
   let node: AudioBufferSourceNode | null = null;
@@ -271,6 +319,29 @@ export async function previewEditedTake(take: AudioTake, recipe: EditRecipe, sta
     handle.stop();
     throw error;
   }
+}
+
+export async function previewEditedTake(take: AudioTake, recipe: EditRecipe, startAt = recipe.trimStart): Promise<PreviewHandle> {
+  stopPreview();
+  const request = previewRequest;
+  const source = await decodeAudio(await readBlob(take.opfsPath));
+  if (request !== previewRequest) throw new Error("Preview was replaced.");
+  return startBufferPreview(source, { start: recipe.trimStart, end: recipe.trimEnd }, recipe.gainDb, startAt);
+}
+
+/**
+ * Plays an already-decoded buffer through the shared context. Browsers
+ * without Ogg Vorbis media support (Safari) use this for vanilla previews.
+ * The loader runs after the current preview stops; a null result rejects
+ * because the sound could not be fetched or decoded.
+ */
+export async function previewBuffer(load: () => Promise<AudioBuffer | null>, startAt = 0): Promise<PreviewHandle> {
+  stopPreview();
+  const request = previewRequest;
+  const source = await load();
+  if (request !== previewRequest) throw new Error("Preview was replaced.");
+  if (!source) throw new Error("The sound could not be loaded for playback.");
+  return startBufferPreview(source, { start: 0, end: null }, 0, startAt);
 }
 
 export async function previewRemote(url: string, startAt = 0): Promise<PreviewHandle> {
@@ -440,5 +511,9 @@ export class MicrophoneRecorder {
     this.worklet = null;
     this.stream = null;
     this.context = null;
+    // The playback context from before the microphone capture can stay
+    // silent on iOS after the audio-session route change; drop it so the
+    // next preview creates a fresh context on the normal playback route.
+    resetAudioContext();
   }
 }
