@@ -6,6 +6,10 @@ The app stores project data in your browser. It does not use a server or upload 
 
 > This is an unofficial tool. Mojang and Microsoft do not approve it.
 
+## Browser support
+
+The app runs in current versions of Chrome, Edge, Firefox, and Safari. Safari cannot decode Ogg Vorbis audio natively. On Safari, the app decodes vanilla sounds and imported `.ogg` files with a WebAssembly decoder. On iOS, audio playback starts after your first tap on a transport button.
+
 ## Develop
 
 Use Node.js 22 or 24.

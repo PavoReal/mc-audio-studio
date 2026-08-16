@@ -1,5 +1,5 @@
 import type { CatalogVariant } from "../types";
-import { audioContext } from "./audio";
+import { decodeAudioBytes } from "./audio";
 
 const buffers = new Map<string, Promise<AudioBuffer | null>>();
 
@@ -8,6 +8,8 @@ const buffers = new Map<string, Promise<AudioBuffer | null>>();
  * sends no CORS headers, so the request goes through the same-origin
  * /vanilla-assets path (proxied by Vite in dev/preview; production hosts need
  * an equivalent rewrite; in production a Cloudflare Pages Function serves it).
+ * Decoding uses the shared context and falls back to the WebAssembly Vorbis
+ * decoder on browsers without native Ogg Vorbis support (Safari).
  * Resolves to null on any failure (network/CORS/decode); failed entries are
  * evicted so the next call retries instead of sticking for the session.
  */
@@ -23,7 +25,7 @@ export function fetchVanillaBuffer(variant: CatalogVariant): Promise<AudioBuffer
         }
         return response.arrayBuffer();
       })
-      .then((data) => audioContext().decodeAudioData(data))
+      .then((data) => decodeAudioBytes(data))
       .catch(() => {
         buffers.delete(hash);
         return null;
